@@ -1,13 +1,13 @@
-# chembl.fetch.download_activities の再現プロンプト
+# chem.chembl.fetch.download_activities の再現プロンプト
 
-`chem`リポジトリに`chem`(共通ユーティリティ)と`chembl`(ChEMBLデータ取得)パッケージを追加し、ChEMBLのターゲット別バイオアクティビティデータをダウンロードする関数を実装するための指示。
+`chem`リポジトリの`chem`パッケージ内に、ChEMBLデータ取得用のサブパッケージ`chembl`(`chem.chembl`)を追加し、ChEMBLのターゲット別バイオアクティビティデータをダウンロードする関数を実装するための指示。
 
 ## 要件
 
-`src/chembl/fetch.py` に、以下のシグネチャで呼び出せる関数を実装する:
+`src/chem/chembl/fetch.py` に、以下のシグネチャで呼び出せる関数を実装する:
 
 ```python
-import chembl.fetch as cf
+import chem.chembl.fetch as cf
 cf.download_activities(id, mw=[250, 650], normalize_smiles=True, output="test.tsv")
 ```
 
@@ -54,7 +54,7 @@ parent_chembl_id, target_chembl_id, smiles, mw, n, pchembl_mean, pchembl_median,
 
 ## 呼び出しログと進捗出力 (CHEM_QUIETNESS)
 
-`src/chem/verbosity.py` に共通デコレータを実装し、`chembl.fetch.download_activities`に適用する:
+`src/chem/verbosity.py` に共通デコレータを実装し、`chem.chembl.fetch.download_activities`に適用する:
 
 - `is_quiet()`: 環境変数`CHEM_QUIETNESS`が未設定なら`False`(非quiet)。設定されていて値が`"0"`/`"N"`/`"FALSE"`(大文字小文字不問)のいずれでもなければ`True`(quiet)
 - `@logged`デコレータ: `is_quiet()`が`False`のとき、呼び出された関数名と実引数(デフォルト値も含めてbindしたもの)を`関数名(引数名=値, ...)`の形式で標準エラー出力に書き出す
@@ -67,8 +67,8 @@ parent_chembl_id, target_chembl_id, smiles, mw, n, pchembl_mean, pchembl_median,
 - `~/chem`リポジトリ、`chem` conda-forge環境(Python 3.12)
 - `pyproject.toml`の`dependencies`: `rdkit`, `py3dmol`, `tqdm`, `requests`, `chembl_structure_pipeline`
 - `environment.yml`(conda-forge)にも`chembl_structure_pipeline`を追加
-- `src/`レイアウトで`chem`(共通ユーティリティ)と`chembl`(ChEMBLデータ取得)を並列パッケージとして新設(`pyproject.toml`の`[tool.setuptools.packages.find]`が自動検出)
-- `chembl.fetch`は`chem.verbosity`に依存する(同一リポジトリ内の相互依存、pyproject.tomlへの追加記載は不要)
+- `src/chem/chembl/`として`chem`パッケージのサブパッケージに配置(`pyproject.toml`の`[tool.setuptools.packages.find]`が`chem.chembl`を自動検出)
+- `chem.chembl.fetch`は同じ`chem`パッケージ内の`chem.verbosity`を相対import(`from ..verbosity import ...`)で使う
 
 ## サンプルノートブック
 

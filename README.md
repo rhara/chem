@@ -40,10 +40,10 @@ pip install -e ".[dev,notebook]"
 - AmberTools (`tleap`, `sander`, `antechamber`, `cpptraj`, ...): conda-forge
   only, see `environment.yml` — no PyPI package exists
 
-## chembl.fetch — ChEMBL bioactivity download
+## chem.chembl.fetch — ChEMBL bioactivity download
 
 ```python
-import chembl.fetch as cf
+import chem.chembl.fetch as cf
 
 cf.download_activities(
     "BRAF_HUMAN",  # ChEMBL target id, UniProt accession, or UniProt entry name
@@ -64,7 +64,7 @@ with `n`/`pchembl_mean`/`pchembl_median`/`pchembl_std` plus a
 
 ### Progress and call logging
 
-Every call to `chembl.fetch.download_activities` prints its function name and
+Every call to `chem.chembl.fetch.download_activities` prints its function name and
 arguments to stderr, and long-running downloads show a `tqdm` progress bar —
 both controlled by the `CHEM_QUIETNESS` environment variable. Unset (or set
 to `"0"`/`"N"`/`"FALSE"`, case-insensitive) means verbose (the default); any
@@ -87,7 +87,7 @@ conda run -n chem python -c "import rdkit; print(rdkit.__version__)"
 ## Layout
 
 - `src/chem/` — core package (`verbosity.py`: the `CHEM_QUIETNESS`-aware `@logged` decorator)
-- `src/chembl/` — ChEMBL data access (`fetch.py`: `download_activities`)
+- `src/chem/chembl/` — ChEMBL data access (`fetch.py`: `download_activities`)
 - `notebooks/` — example notebooks
 - `tests/` — pytest test suite
 

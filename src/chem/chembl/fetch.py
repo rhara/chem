@@ -11,7 +11,7 @@ from rdkit import Chem, RDLogger
 from rdkit.Chem.Descriptors import MolWt
 from tqdm import tqdm
 
-from chem.verbosity import is_quiet, logged
+from ..verbosity import is_quiet, logged
 
 # chembl_structure_pipeline's standardize_mol/get_parent_mol run RDKit's C++
 # Normalizer/Uncharger, which log "Running Normalizer" / "Running Uncharger" etc.

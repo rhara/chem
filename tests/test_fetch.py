@@ -1,4 +1,4 @@
-import chembl.fetch as cf
+import chem.chembl.fetch as cf
 
 
 def test_resolve_chembl_id_passthrough():
