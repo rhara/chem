@@ -12,11 +12,13 @@ dependencies = [
     "rdkit",
     "py3dmol",
     "tqdm",
+    "requests",
+    "chembl_structure_pipeline",
 ]
 
 [project.optional-dependencies]
 # Jupyter itself: needed to actually run/display notebooks, not to use chem as a library.
-notebook = ["jupyter", "jupyterlab", "notebook", "ipykernel", "ipywidgets", "nglview"]
+notebook = ["jupyter", "jupyterlab", "notebook", "ipykernel", "ipywidgets", "nglview", "pandas"]
 dev = ["pytest"]
 
 [build-system]

@@ -5,6 +5,7 @@ dependencies:
   - python=3.12
   - ambertools
   - rdkit
+  - chembl_structure_pipeline
   - nglview
   - pip
   - pip:
