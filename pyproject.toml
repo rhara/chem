@@ -4,10 +4,20 @@ version = "0.1.0"
 description = "Chemistry utilities for interactive use in Jupyter notebooks"
 requires-python = ">=3.12"
 readme = "README.md"
-dependencies = []
+# rdkit, py3dmol, tqdm have official PyPI wheels, so they're safe to list here.
+# ambertools and nglview are installed via environment.yml (conda-forge) instead:
+# ambertools has no PyPI package at all, and nglview's JupyterLab widget assets
+# are more reliably wired up through the conda-forge build.
+dependencies = [
+    "rdkit",
+    "py3dmol",
+    "tqdm",
+]
 
 [project.optional-dependencies]
-dev = ["pytest", "ipykernel", "jupyter"]
+# Jupyter itself: needed to actually run/display notebooks, not to use chem as a library.
+notebook = ["jupyter", "jupyterlab", "notebook", "ipykernel", "ipywidgets", "nglview"]
+dev = ["pytest"]
 
 [build-system]
 requires = ["setuptools>=68"]

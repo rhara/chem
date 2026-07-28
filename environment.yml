@@ -1,0 +1,11 @@
+name: chem
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - ambertools
+  - rdkit
+  - nglview
+  - pip
+  - pip:
+      - -e .[dev,notebook]
