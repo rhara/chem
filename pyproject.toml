@@ -1,0 +1,17 @@
+[project]
+name = "chem"
+version = "0.1.0"
+description = "Chemistry utilities for interactive use in Jupyter notebooks"
+requires-python = ">=3.12"
+readme = "README.md"
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest", "ipykernel", "jupyter"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
