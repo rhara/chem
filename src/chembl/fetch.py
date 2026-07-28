@@ -1,4 +1,5 @@
 import csv
+import os
 import re
 import statistics
 import sys
@@ -6,11 +7,39 @@ from collections import defaultdict
 
 import requests
 from chembl_structure_pipeline import standardizer as csp
-from rdkit import Chem
+from rdkit import Chem, RDLogger
 from rdkit.Chem.Descriptors import MolWt
 from tqdm import tqdm
 
 from chem.verbosity import is_quiet, logged
+
+# chembl_structure_pipeline's standardize_mol/get_parent_mol run RDKit's C++
+# Normalizer/Uncharger, which log "Running Normalizer" / "Running Uncharger" etc.
+# to rdApp.info; that's internal noise, not something callers need to see.
+RDLogger.DisableLog("rdApp.info")
+RDLogger.DisableLog("rdApp.debug")
+
+
+def _warm_up_standardizer():
+    # The Normalizer's one-time "Initializing Normalizer" message is printed straight
+    # to the process's stderr fd, bypassing RDLogger entirely, so it can only be
+    # caught by redirecting fd 2 for this throwaway first call.
+    devnull_fd = os.open(os.devnull, os.O_WRONLY)
+    saved_stderr_fd = os.dup(2)
+    try:
+        os.dup2(devnull_fd, 2)
+        # Must actually need neutralizing, or the Normalizer's lazy singleton never
+        # gets constructed and the one-time init message is deferred to later calls.
+        mol = Chem.MolFromSmiles("[NH3+]CCC(=O)[O-]")
+        mol = csp.standardize_mol(mol)
+        csp.get_parent_mol(mol)
+    finally:
+        os.dup2(saved_stderr_fd, 2)
+        os.close(saved_stderr_fd)
+        os.close(devnull_fd)
+
+
+_warm_up_standardizer()
 
 CHEMBL_API = "https://www.ebi.ac.uk/chembl/api/data"
 UNIPROT_API = "https://rest.uniprot.org/uniprotkb"
