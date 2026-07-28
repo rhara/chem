@@ -1,14 +1,14 @@
-# chem.chembl.fetch.download_activities の再現プロンプト
+# chem.chembl.download_activities の再現プロンプト
 
 `chem`リポジトリの`chem`パッケージ内に、ChEMBLデータ取得用のサブパッケージ`chembl`(`chem.chembl`)を追加し、ChEMBLのターゲット別バイオアクティビティデータをダウンロードする関数を実装するための指示。
 
 ## 要件
 
-`src/chem/chembl/fetch.py` に、以下のシグネチャで呼び出せる関数を実装する:
+`src/chem/chembl/fetch.py` に関数`download_activities`を実装し、`src/chem/chembl/__init__.py`で`from .fetch import download_activities`として再エクスポートする。以下の形で呼び出せること:
 
 ```python
-import chem.chembl.fetch as cf
-cf.download_activities(id, mw=[250, 650], normalize_smiles=True, output="test.tsv")
+from chem import chembl
+chembl.download_activities(id, mw=[250, 650], normalize_smiles=True, output="test.tsv")
 ```
 
 - `id`: ターゲット蛋白の識別子。以下3種類すべてを受け付ける
@@ -54,7 +54,7 @@ parent_chembl_id, target_chembl_id, smiles, mw, n, pchembl_mean, pchembl_median,
 
 ## 呼び出しログと進捗出力 (CHEM_QUIETNESS)
 
-`src/chem/verbosity.py` に共通デコレータを実装し、`chem.chembl.fetch.download_activities`に適用する:
+`src/chem/verbosity.py` に共通デコレータを実装し、`chem.chembl.download_activities`(実体は`chem/chembl/fetch.py`)に適用する:
 
 - `is_quiet()`: 環境変数`CHEM_QUIETNESS`が未設定なら`False`(非quiet)。設定されていて値が`"0"`/`"N"`/`"FALSE"`(大文字小文字不問)のいずれでもなければ`True`(quiet)
 - `@logged`デコレータ: `is_quiet()`が`False`のとき、呼び出された関数名と実引数(デフォルト値も含めてbindしたもの)を`関数名(引数名=値, ...)`の形式で標準エラー出力に書き出す
@@ -68,12 +68,13 @@ parent_chembl_id, target_chembl_id, smiles, mw, n, pchembl_mean, pchembl_median,
 - `pyproject.toml`の`dependencies`: `rdkit`, `py3dmol`, `tqdm`, `requests`, `chembl_structure_pipeline`
 - `environment.yml`(conda-forge)にも`chembl_structure_pipeline`を追加
 - `src/chem/chembl/`として`chem`パッケージのサブパッケージに配置(`pyproject.toml`の`[tool.setuptools.packages.find]`が`chem.chembl`を自動検出)
-- `chem.chembl.fetch`は同じ`chem`パッケージ内の`chem.verbosity`を相対import(`from ..verbosity import ...`)で使う
+- `chem/chembl/fetch.py`は同じ`chem`パッケージ内の`chem.verbosity`を相対import(`from ..verbosity import ...`)で使う
+- `chem/chembl/__init__.py`は`from .fetch import download_activities`で公開関数を再エクスポートし、利用側は`chem.chembl.fetch`ではなく`chem.chembl`から直接呼び出す
 
 ## サンプルノートブック
 
 `notebooks/00_getting_started.ipynb`に、`BRAF_HUMAN`を対象としたサンプルセルを追加する:
-1. `cf.download_activities("BRAF_HUMAN", mw=[250, 650], normalize_smiles=True, output="braf_activities.tsv")`を実行
+1. `chembl.download_activities("BRAF_HUMAN", mw=[250, 650], normalize_smiles=True, output="braf_activities.tsv")`を実行(`from chem import chembl`)
 2. `pandas`で読み込み、`pchembl_mean`降順で上位を表示
 3. 最も活性の高い化合物をRDKitの`MolToImage`で描画
 
