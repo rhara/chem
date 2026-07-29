@@ -47,11 +47,15 @@ entry whose polymer entities are annotated with that accession via the RCSB
 Search API is downloaded. When `id` is instead a list (or tuple/set) of PDB
 entry ids (e.g. `["6LU7", "7BQY"]`), those entries are downloaded directly,
 skipping target resolution and search entirely. Either way, downloads come
-from `files.rcsb.org` and can optionally be filtered by resolution.
+from `files.rcsb.org`, and the resulting entries can optionally be filtered
+by `resolution_thres` regardless of which form `id` took.
 
 - `id` — ChEMBL target id, UniProt accession, or UniProt entry name (same
-  three forms as `chembl.download_activities`), or a list of PDB entry ids to
-  download directly.
+  three forms as `chembl.download_activities`), or a list (or tuple/set) of
+  PDB entry ids to download directly. Explicit PDB ids are case-insensitive
+  (normalized to uppercase); a `ValueError` is raised if the list is empty or
+  any entry isn't shaped like a PDB id (4 characters: a digit followed by
+  three alphanumerics).
 - `resolution_thres` — optional maximum resolution in Å, inclusive. When set,
   entries without a resolution (e.g. NMR structures) are excluded; when
   `None` (default), every entry is kept regardless of resolution.
