@@ -70,6 +70,27 @@ both controlled by the `CHEM_QUIETNESS` environment variable. Unset (or set
 to `"0"`/`"N"`/`"FALSE"`, case-insensitive) means verbose (the default); any
 other value suppresses both.
 
+## chem.rcsb — RCSB PDB structure download
+
+```python
+from chem import rcsb
+
+rcsb.download_structures(
+    "THRB_HUMAN",  # ChEMBL target id, UniProt accession, or UniProt entry name
+    resolution_thres=2.0,  # optional max resolution in Angstrom, inclusive
+    outdir="data",  # destination directory, created if missing
+    filetype="cif",  # "cif" (default), "pdb", or "both"
+)
+```
+
+Resolves `id` to a UniProt accession, finds every PDB entry whose polymer entities
+are annotated with that accession via the RCSB Search API, and downloads each
+qualifying entry's structure file(s) from `files.rcsb.org`. When `resolution_thres`
+is set, entries without a resolution (e.g. NMR structures) are excluded; when it's
+left as `None`, every entry is downloaded regardless of resolution. A file already
+present in `outdir` is left as-is and not re-downloaded, so re-running only fetches
+what's missing.
+
 ### A note on `conda activate` and plain `python`/`pip`
 
 If your shell auto-activates another conda env at startup (e.g. via
@@ -86,8 +107,9 @@ conda run -n chem python -c "import rdkit; print(rdkit.__version__)"
 
 ## Layout
 
-- `src/chem/` — core package (`verbosity.py`: the `CHEM_QUIETNESS`-aware `@logged` decorator)
+- `src/chem/` — core package (`verbosity.py`: the `CHEM_QUIETNESS`-aware `@logged` decorator; `ids.py`: shared ChEMBL target id / UniProt accession / UniProt entry name resolution)
 - `src/chem/chembl/` — ChEMBL data access (`fetch.py`: `download_activities`, re-exported at package level)
+- `src/chem/rcsb/` — RCSB PDB structure download (`fetch.py`: `download_structures`, re-exported at package level)
 - `notebooks/` — example notebooks
 - `tests/` — pytest test suite
 

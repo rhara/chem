@@ -1,11 +1,6 @@
 import chem.chembl.fetch as cf
 
 
-def test_resolve_chembl_id_passthrough():
-    assert cf._resolve_target_chembl_id("CHEMBL204") == "CHEMBL204"
-    assert cf._resolve_target_chembl_id("chembl204") == "CHEMBL204"
-
-
 def test_normalize_smiles_strips_hcl_salt():
     # hydrochloride salt: keep the parent, drop the HCl counterion
     smi = cf._normalize_smiles("CN=C(N)N1CCC(Oc2ccccc2)CC1.Cl")

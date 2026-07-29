@@ -1,6 +1,5 @@
 import csv
 import os
-import re
 import statistics
 import sys
 from collections import defaultdict
@@ -11,6 +10,7 @@ from rdkit import Chem, RDLogger
 from rdkit.Chem.Descriptors import MolWt
 from tqdm import tqdm
 
+from ..ids import CHEMBL_API, resolve_target_chembl_id
 from ..verbosity import is_quiet, logged
 
 # chembl_structure_pipeline's standardize_mol/get_parent_mol run RDKit's C++
@@ -41,15 +41,6 @@ def _warm_up_standardizer():
 
 _warm_up_standardizer()
 
-CHEMBL_API = "https://www.ebi.ac.uk/chembl/api/data"
-UNIPROT_API = "https://rest.uniprot.org/uniprotkb"
-
-_CHEMBL_ID_RE = re.compile(r"^CHEMBL\d+$", re.IGNORECASE)
-# Official UniProtKB accession shape; anything else is treated as an entry name (mnemonic).
-_UNIPROT_ACCESSION_RE = re.compile(
-    r"^([A-NR-Z][0-9][A-Z0-9]{3}[0-9]|[OPQ][0-9][A-Z0-9]{3}[0-9])$", re.IGNORECASE
-)
-
 # One row per activity record (normalize_smiles=False).
 ACTIVITY_FIELDS = [
     "molecule_chembl_id",
@@ -72,48 +63,6 @@ AGGREGATED_FIELDS = [
     "pchembl_median",
     "pchembl_std",
 ]
-
-
-def _resolve_uniprot_accession(id_):
-    # UniProt's "accession" query field rejects anything not shaped like an accession
-    # (400 Bad Request), so entry names (e.g. "THRB_HUMAN") must go through "id" instead.
-    field = "accession" if _UNIPROT_ACCESSION_RE.match(id_) else "id"
-    resp = requests.get(
-        f"{UNIPROT_API}/search",
-        params={
-            "query": f"{field}:{id_}",
-            "fields": "accession",
-            "format": "json",
-            "size": 1,
-        },
-        timeout=30,
-    )
-    resp.raise_for_status()
-    results = resp.json().get("results", [])
-    if not results:
-        raise ValueError(f"could not resolve '{id_}' to a UniProt accession")
-    return results[0]["primaryAccession"]
-
-
-def _resolve_target_chembl_id(id_):
-    if _CHEMBL_ID_RE.match(id_):
-        return id_.upper()
-
-    accession = _resolve_uniprot_accession(id_)
-    resp = requests.get(
-        f"{CHEMBL_API}/target.json",
-        params={"target_components__accession": accession, "format": "json"},
-        timeout=30,
-    )
-    resp.raise_for_status()
-    targets = resp.json().get("targets", [])
-    if not targets:
-        raise ValueError(
-            f"no ChEMBL target found for UniProt accession {accession} (from id '{id_}')"
-        )
-    # Prefer a single-protein target over complexes/families sharing the same component.
-    targets.sort(key=lambda t: t.get("target_type") != "SINGLE PROTEIN")
-    return targets[0]["target_chembl_id"]
 
 
 def _normalize_smiles(smiles):
@@ -215,7 +164,7 @@ def download_activities(id, mw=None, normalize_smiles=False, output="activities.
             raise ValueError("mw must be [lower, upper]")
         lo, hi = mw
 
-    target_chembl_id = _resolve_target_chembl_id(id)
+    target_chembl_id = resolve_target_chembl_id(id)
     delimiter = "," if str(output).lower().endswith(".csv") else "\t"
 
     records = []
