@@ -173,12 +173,12 @@ draw ligands at all).
 
 ## chem.view3d
 
-### `view3d.render_protein(path, exclude=SOLVENT_AND_IONS, width=600, height=500)`
+### `view3d.render_protein(path, exclude=SOLVENT_AND_IONS, width=600, height=500, coloring="spectrum", bfactor_range=(50, 90))`
 
 Display a PDB structure file as an interactive py3Dmol view, followed by a
-caption: a rainbow (N -> C) cartoon backbone, plus any HETATM ligand group
-not in `exclude` as magenta sticks (cartoon alone only draws the polymer
-backbone), then -- below the view -- a caption line.
+caption: a cartoon backbone colored per `coloring`, plus any HETATM ligand
+group not in `exclude` as magenta sticks (cartoon alone only draws the
+polymer backbone), then -- below the view -- a caption line.
 
 - `path` — path to a PDB file.
 - `exclude` — HET codes to leave off the ligand sticks. Defaults to
@@ -186,6 +186,13 @@ backbone), then -- below the view -- a caption line.
   `SOLVENT_AND_IONS | {"NAG", "TYS"}`) to also exclude structure-specific
   non-ligand HETATM groups such as glycosylation sugars or modified residues.
 - `width` / `height` — viewer size in pixels.
+- `coloring` — `"spectrum"` (default): rainbow N -> C by residue position; or
+  `"bfactor"`: rainbow by the file's per-atom B-factor column (e.g.
+  AlphaFold's per-residue pLDDT confidence).
+- `bfactor_range` — `(min, max)` the `"bfactor"` gradient is scaled over;
+  ignored for `"spectrum"`. Defaults to AlphaFold's pLDDT confidence
+  convention (`50, 90`); pass the structure's own B-factor range for
+  crystallographic temperature factors.
 
 The caption below the view shows the PDB id (`path`'s filename stem), the
 distinct chain ids found in `ATOM` records, the ligand HET codes shown as

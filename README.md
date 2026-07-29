@@ -194,15 +194,23 @@ view3d.render_protein(
     width=600,
     height=500,
 )
+
+# Or color by the file's B-factor column instead (e.g. AlphaFold's per-residue
+# pLDDT confidence, which is what AlphaFold DB downloads store there).
+view3d.render_protein("af_data/AF-P00734-F1.pdb", coloring="bfactor")
 ```
 
 Cartoon-only styles don't draw ligands, so any HETATM group not in `exclude` is
-added as magenta sticks. Below the view, a caption shows the PDB id, chain ids,
-ligand HET codes, and experimental resolution (parsed from the file's `REMARK 2
-RESOLUTION` record, or `"N/A"` if absent -- e.g. NMR/AlphaFold/`protein.align`
-output). `render_protein` displays the view and caption directly and returns
-nothing, so there's no need to chain `.show()` or use it as a cell's last
-expression.
+added as magenta sticks. `coloring="spectrum"` (default) colors the cartoon
+N -> C by residue position; `coloring="bfactor"` colors it by the file's
+per-atom B-factor column instead, scaled over `bfactor_range` (default `(50,
+90)`, AlphaFold's pLDDT confidence convention -- pass the structure's own
+B-factor range for crystallographic temperature factors). Below the view, a
+caption shows the PDB id, chain ids, ligand HET codes, and experimental
+resolution (parsed from the file's `REMARK 2 RESOLUTION` record, or `"N/A"` if
+absent -- e.g. NMR/AlphaFold/`protein.align` output). `render_protein`
+displays the view and caption directly and returns nothing, so there's no need
+to chain `.show()` or use it as a cell's last expression.
 
 ### A note on `conda activate` and plain `python`/`pip`
 

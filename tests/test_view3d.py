@@ -1,4 +1,5 @@
 import py3Dmol
+import pytest
 
 from chem.protein import SOLVENT_AND_IONS
 from chem.view3d.render import (
@@ -107,7 +108,7 @@ def test_build_view_has_ligand_style(tmp_path):
     )
     ligand_resnames = _ligand_resnames(pdb_text, SOLVENT_AND_IONS)
 
-    view = _build_view(pdb_text, ligand_resnames, 600, 500)
+    view = _build_view(pdb_text, ligand_resnames, 600, 500, "spectrum", (50, 90))
     assert isinstance(view, py3Dmol.view)
     assert '"resn": ["LIG"]' in view.startjs
     assert '"color": "magenta"' in view.startjs
@@ -123,8 +124,32 @@ def test_build_view_no_ligand_style_when_only_solvent():
     )
     ligand_resnames = _ligand_resnames(pdb_text, SOLVENT_AND_IONS)
 
-    view = _build_view(pdb_text, ligand_resnames, 600, 500)
+    view = _build_view(pdb_text, ligand_resnames, 600, 500, "spectrum", (50, 90))
     assert "stick" not in view.startjs
+
+
+def test_build_view_spectrum_coloring():
+    pdb_text = _atom_line(1, "CA", "ALA", "A", 1, 0.0, 0.0, 0.0)
+    view = _build_view(pdb_text, [], 600, 500, "spectrum", (50, 90))
+    assert '"color": "spectrum"' in view.startjs
+    assert '"colorscheme": "roygb"' in view.startjs
+    assert '"prop": "b"' not in view.startjs
+
+
+def test_build_view_bfactor_coloring_uses_given_range():
+    pdb_text = _atom_line(1, "CA", "ALA", "A", 1, 0.0, 0.0, 0.0)
+    view = _build_view(pdb_text, [], 600, 500, "bfactor", (30, 95))
+    assert '"prop": "b"' in view.startjs
+    assert '"gradient": "roygb"' in view.startjs
+    assert '"min": 30' in view.startjs
+    assert '"max": 95' in view.startjs
+
+
+def test_render_protein_rejects_bad_coloring(tmp_path):
+    path = tmp_path / "1ABC.pdb"
+    _write_pdb(path, [_atom_line(1, "CA", "ALA", "A", 1, 0.0, 0.0, 0.0)])
+    with pytest.raises(ValueError):
+        render_protein(str(path), coloring="rainbow")
 
 
 def test_render_protein_shows_view_then_caption_and_returns_none(tmp_path, monkeypatch):
