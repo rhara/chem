@@ -28,8 +28,9 @@ protein.align(structures, reference=None, chain=None, outdir="aligned")
 1. `reference`を解決し、Bio.PDB(拡張子`.cif`/`.mmcif`なら`MMCIFParser`、それ以外は`PDBParser`)で読み込む
 2. 各構造について「主鎖(primary polymer chain)」を選択する:
    - `chain`引数が指定されていればそのチェーンIDを使う(見つからなければ`ValueError`)
-   - 指定がなければ、標準アミノ酸残基(`Bio.PDB.Polypeptide.is_aa(residue, standard=True)`)を最も多く含むチェーンを自動選択する。**単純に「ファイル内最初のチェーン」を採用してはいけない** — 例えばトロンビンはL鎖(軽鎖、~36残基)がH鎖(重鎖、~259残基)より先に現れることがあり、「最初に見つかった一定長以上のチェーン」という閾値ベースの選択だと軽鎖を誤って選んでしまう。残基数最大のチェーンを選ぶことで正しくH鎖(触媒ドメイン)が選ばれることを確認済み
-3. 選択したチェーンから、CA原子を持つ標準アミノ酸残基のみを使って1文字シーケンスと対応するCA原子リストを作る
+   - 指定がなければ、標準アミノ酸残基を最も多く含むチェーンを自動選択する。**単純に「ファイル内最初のチェーン」を採用してはいけない** — 例えばトロンビンはL鎖(軽鎖、~36残基)がH鎖(重鎖、~259残基)より先に現れることがあり、「最初に見つかった一定長以上のチェーン」という閾値ベースの選択だと軽鎖を誤って選んでしまう。残基数最大のチェーンを選ぶことで正しくH鎖(触媒ドメイン)が選ばれることを確認済み
+   - 「標準アミノ酸残基」の判定は`Bio.PDB.Polypeptide.is_aa(residue, standard=True)`**だけでは不十分**: `is_aa`はresnameのみを見ており、hetero flag(`residue.id[0]`)をチェックしない。共有結合したペプチド模倣リガンド(D-アミノ酸を含むペプチド性阻害剤など)が蛋白質と同じチェーンIDを使い、かつ標準アミノ酸名(例: `PRO`)をHETATMとして持つ場合、`is_aa`だけの判定だとリガンド側の残基を誤って蛋白質配列に取り込んでしまう。実データ(トロンビン+ペプチド性阻害剤複合体 `6YHG`、リガンド側の`PRO H 307`がHETATMとして紐づいていた)でこの誤りによりRMSDが約0.3Å→約1.9Åに悪化する不具合を発見・修正済み。`_is_polymer_residue(r) = r.id[0] == " " and is_aa(r, standard=True)`という追加のhetero flagチェックを`_select_chain`・`_chain_seq_and_ca`の両方に適用する
+3. 選択したチェーンから、CA原子を持つ標準アミノ酸残基(上記の`_is_polymer_residue`基準)のみを使って1文字シーケンスと対応するCA原子リストを作る
 4. `Bio.Align.PairwiseAligner`(`mode="global"`、`open_gap_score=-10`、`extend_gap_score=-0.5`、`match_score=2`、`mismatch_score=-1`)でreferenceシーケンスと各構造のシーケンスをグローバルアラインメントし、`alignment.aligned`からギャップのないマッチ位置ペアを取り出し、対応するCA原子ペアのリストを作る
 5. マッチしたCA原子ペアが3組未満なら(`_MIN_MATCHED_RESIDUES = 3`)、その構造はアラインメント不可としてスキップ(quiet時以外は`stderr`に警告を出し、処理は継続)
 6. `Bio.PDB.Superimposer`でマッチしたCA原子ペアに対してKabsch法によるフィッティングを行い、得られた回転・並進を**構造の全原子**(タンパク質だけでなくリガンド・水も含む)に適用する。これにより、align出力後もリガンドの相対位置が保たれ、後続の`find_pocket`にそのまま使える

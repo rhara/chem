@@ -94,7 +94,10 @@ Sequence-align and structurally superpose a set of same-target structures
 - `chain` — optional chain id to use in every structure, overriding
   auto-selection. Default: each structure's chain with the most standard
   amino acid residues (its primary polymer chain — e.g. thrombin's catalytic
-  heavy chain rather than its short light chain).
+  heavy chain rather than its short light chain). HETATM residues are excluded
+  even when their resname matches a standard amino acid, so a covalently-linked
+  peptidomimetic ligand sharing the protein's chain id (e.g. a D-amino-acid-
+  containing inhibitor) doesn't get pulled into the sequence.
 - `outdir` — destination directory; created if missing.
 
 For each non-reference structure, its selected chain is sequence-aligned

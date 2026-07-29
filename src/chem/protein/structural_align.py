@@ -20,6 +20,16 @@ def _load_structure(path):
     return parser.get_structure(os.path.splitext(os.path.basename(path))[0], path)
 
 
+def _is_polymer_residue(r):
+    """A real polymer (ATOM) residue -- excludes HETATM residues even when their
+    resname matches a standard amino acid, e.g. a D-amino acid or proline in a
+    covalently-linked peptidomimetic ligand that shares the protein's chain id.
+    Bio.PDB's is_aa() checks resname only, not the hetero flag, so it alone would
+    wrongly pull such ligand residues into the sequence/coordinate list.
+    """
+    return r.id[0] == " " and is_aa(r, standard=True)
+
+
 def _select_chain(model, chain_id=None):
     """Return chain_id if given, otherwise the model's chain with the most standard
     amino acid residues (its primary polymer chain).
@@ -30,11 +40,11 @@ def _select_chain(model, chain_id=None):
         if not matches:
             raise ValueError(f"chain '{chain_id}' not found")
         return matches[0]
-    return max(chains, key=lambda c: sum(1 for r in c if is_aa(r, standard=True)))
+    return max(chains, key=lambda c: sum(1 for r in c if _is_polymer_residue(r)))
 
 
 def _chain_seq_and_ca(chain):
-    residues = [r for r in chain if is_aa(r, standard=True) and "CA" in r]
+    residues = [r for r in chain if _is_polymer_residue(r) and "CA" in r]
     seq = "".join(index_to_one(three_to_index(r.get_resname())) for r in residues)
     ca_atoms = [r["CA"] for r in residues]
     return seq, ca_atoms
@@ -86,9 +96,10 @@ def align(structures, reference=None, chain=None, outdir="aligned"):
     outdir: destination directory; created if missing.
 
     Returns {path: rmsd} over the sequence-matched CA atoms for every structure that
-    could be aligned (the reference maps to 0.0). A structure with no usable chain,
-    or too few residues in common with the reference, is skipped with a warning
-    (unless quiet) rather than raising.
+    could be aligned (the reference maps to 0.0). rmsd is a plain float rounded to
+    3 decimal places. A structure with no usable chain, or too few residues in
+    common with the reference, is skipped with a warning (unless quiet) rather
+    than raising.
 
     Very large structures (e.g. cryo-EM assemblies with >26 chains or >99999 atoms)
     are not supported by the legacy PDB writer used here.
@@ -144,6 +155,6 @@ def align(structures, reference=None, chain=None, outdir="aligned"):
 
         io.set_structure(mob_structure)
         io.save(out_path)
-        results[path] = sup.rms
+        results[path] = round(float(sup.rms), 3)
 
     return results
