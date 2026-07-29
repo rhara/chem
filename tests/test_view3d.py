@@ -1,10 +1,12 @@
+import re
+
 import py3Dmol
 import pytest
 
 from chem.protein import SOLVENT_AND_IONS
 from chem.view3d.render import (
     _build_view,
-    _caption,
+    _caption_lines,
     _chain_ids,
     _ligand_resnames,
     _resolution,
@@ -79,23 +81,18 @@ def test_resolution_na_when_remark_missing():
     assert _resolution(pdb_text) == "N/A"
 
 
-def test_caption_includes_all_fields():
+def test_caption_lines_includes_all_fields():
     pdb_text = "REMARK   2 RESOLUTION.    2.00 ANGSTROMS.\n" + _atom_line(
         1, "CA", "ALA", "H", 1, 0.0, 0.0, 0.0
     )
-    caption = _caption("data/1ABC.pdb", pdb_text, ["LIG"])
-    assert "PDB ID: 1ABC" in caption
-    assert "Chain: H" in caption
-    assert "Ligand: LIG" in caption
-    assert "Resolution: 2.00 Å" in caption
+    lines = _caption_lines("data/1ABC.pdb", pdb_text, ["LIG"])
+    assert lines == ["PDB ID: 1ABC", "Chain: H", "Ligand: LIG", "Resolution: 2.00 Å"]
 
 
-def test_caption_defaults_when_no_chain_or_ligand():
+def test_caption_lines_defaults_when_no_chain_or_ligand():
     pdb_text = "junk with no ATOM records"
-    caption = _caption("data/1ABC.pdb", pdb_text, [])
-    assert "Chain: N/A" in caption
-    assert "Ligand: none" in caption
-    assert "Resolution: N/A" in caption
+    lines = _caption_lines("data/1ABC.pdb", pdb_text, [])
+    assert lines == ["PDB ID: 1ABC", "Chain: N/A", "Ligand: none", "Resolution: N/A"]
 
 
 def test_build_view_has_ligand_style(tmp_path):
@@ -152,7 +149,7 @@ def test_render_protein_rejects_bad_coloring(tmp_path):
         render_protein(str(path), coloring="rainbow")
 
 
-def test_render_protein_shows_view_then_caption_and_returns_none(tmp_path, monkeypatch):
+def test_render_protein_frames_and_returns_none(tmp_path, monkeypatch):
     lines = [
         "REMARK   2 RESOLUTION.    1.50 ANGSTROMS.",
         _atom_line(1, "CA", "ALA", "H", 1, 0.0, 0.0, 0.0),
@@ -162,17 +159,31 @@ def test_render_protein_shows_view_then_caption_and_returns_none(tmp_path, monke
     _write_pdb(path, lines)
 
     events = []
-    monkeypatch.setattr(py3Dmol.view, "show", lambda self: events.append("view"))
     monkeypatch.setattr(
-        "chem.view3d.render.display", lambda obj: events.append(("caption", obj.data))
+        "chem.view3d.render.display", lambda obj: events.append(("display", obj.data))
+    )
+    monkeypatch.setattr(
+        py3Dmol.view, "insert", lambda self, containerid: events.append(("insert", containerid))
     )
 
-    result = render_protein(str(path))
+    result = render_protein(str(path), width=600, height=500)
 
     assert result is None
-    assert events[0] == "view"
-    assert events[1][0] == "caption"
-    assert "PDB ID: 1ABC" in events[1][1]
-    assert "Chain: H" in events[1][1]
-    assert "Ligand: LIG" in events[1][1]
-    assert "Resolution: 1.50 Å" in events[1][1]
+    # The bordered placeholder + caption must be displayed before the view is
+    # insert()ed into it, since insert()'s JS looks up the placeholder by id.
+    assert events[0][0] == "display"
+    html = events[0][1]
+    assert events[1][0] == "insert"
+
+    assert "border:1px solid #ccc" in html
+    assert "width:600px" in html
+    assert "height:500px" in html
+    assert "PDB ID: 1ABC" in html
+    assert "Chain: H" in html
+    assert "Ligand: LIG" in html
+    assert "Resolution: 1.50 Å" in html
+
+    # The placeholder id in the displayed HTML must match what insert() received.
+    match = re.search(r'id="(chem-view3d-[0-9a-f]+)"', html)
+    assert match is not None
+    assert events[1][1] == match.group(1)

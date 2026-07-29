@@ -175,10 +175,12 @@ draw ligands at all).
 
 ### `view3d.render_protein(path, exclude=SOLVENT_AND_IONS, width=600, height=500, coloring="spectrum", bfactor_range=(50, 90))`
 
-Display a PDB structure file as an interactive py3Dmol view, followed by a
-caption: a cartoon backbone colored per `coloring`, plus any HETATM ligand
-group not in `exclude` as magenta sticks (cartoon alone only draws the
-polymer backbone), then -- below the view -- a caption line.
+Display a PDB structure file as an interactive py3Dmol view in a light-gray
+bordered frame, with a caption beside it on the right: a cartoon backbone
+colored per `coloring`, plus any HETATM ligand group not in `exclude` as
+magenta sticks (cartoon alone only draws the polymer backbone). The border
+marks exactly the area where 3Dmol.js's mouse controls (rotate/zoom/pan) take
+over.
 
 - `path` — path to a PDB file.
 - `exclude` — HET codes to leave off the ligand sticks. Defaults to
@@ -194,7 +196,7 @@ polymer backbone), then -- below the view -- a caption line.
   convention (`50, 90`); pass the structure's own B-factor range for
   crystallographic temperature factors.
 
-The caption below the view shows the PDB id (`path`'s filename stem), the
+The caption lists, one per line: the PDB id (`path`'s filename stem), the
 distinct chain ids found in `ATOM` records, the ligand HET codes shown as
 sticks (`"none"` if empty), and the experimental resolution parsed from the
 file's legacy-PDB `REMARK 2 RESOLUTION` record (`"N/A"` if absent — e.g. NMR

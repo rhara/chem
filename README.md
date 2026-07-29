@@ -205,8 +205,10 @@ added as magenta sticks. `coloring="spectrum"` (default) colors the cartoon
 N -> C by residue position; `coloring="bfactor"` colors it by the file's
 per-atom B-factor column instead, scaled over `bfactor_range` (default `(50,
 90)`, AlphaFold's pLDDT confidence convention -- pass the structure's own
-B-factor range for crystallographic temperature factors). Below the view, a
-caption shows the PDB id, chain ids, ligand HET codes, and experimental
+B-factor range for crystallographic temperature factors). The view sits in a
+light-gray border -- exactly the area where 3Dmol.js's mouse controls
+(rotate/zoom/pan) take over -- with a caption beside it on the right, one
+field per line: the PDB id, chain ids, ligand HET codes, and experimental
 resolution (parsed from the file's `REMARK 2 RESOLUTION` record, or `"N/A"` if
 absent -- e.g. NMR/AlphaFold/`protein.align` output). `render_protein`
 displays the view and caption directly and returns nothing, so there's no need
