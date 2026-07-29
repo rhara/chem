@@ -180,6 +180,27 @@ don't contain the ligand themselves. Returns a dict with `pocket_id`,
 dict under `info`, and `residues` (`[{"chain", "resnum", "resname"}, ...]`) lining
 the selected pocket.
 
+## chem.view3d — interactive py3Dmol structure viewer
+
+```python
+from chem import view3d
+from chem.protein import SOLVENT_AND_IONS
+
+# Rainbow (N -> C) cartoon backbone, plus any HETATM ligand group as sticks.
+# Use as a notebook cell's last expression to display it.
+view3d.render_protein(
+    "data/1PPB.pdb",
+    exclude=SOLVENT_AND_IONS | {"NAG"},  # default: SOLVENT_AND_IONS
+    width=600,
+    height=500,
+)
+```
+
+Cartoon-only styles don't draw ligands, so any HETATM group not in `exclude` is
+added as colored sticks. Returns the py3Dmol view rather than displaying it
+directly, so it can also be `.show()`ed explicitly (e.g. inside an
+`ipywidgets.Output()` context, to redraw on a widget callback).
+
 ### A note on `conda activate` and plain `python`/`pip`
 
 If your shell auto-activates another conda env at startup (e.g. via
@@ -201,6 +222,7 @@ conda run -n chem python -c "import rdkit; print(rdkit.__version__)"
 - `src/chem/rcsb/` — RCSB PDB structure download (`fetch.py`: `download_structures`, re-exported at package level)
 - `src/chem/alphafold/` — AlphaFold DB structure download (`fetch.py`: `download_structures`, re-exported at package level)
 - `src/chem/protein/` — structural tools (`structural_align.py`: `align`; `pocket.py`: `find_pocket`; both re-exported at package level)
+- `src/chem/view3d/` — interactive structure viewing (`render.py`: `render_protein`, re-exported at package level)
 - `notebooks/` — example notebooks
 - `tests/` — pytest test suite
 

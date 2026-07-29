@@ -167,6 +167,25 @@ displaying as a ligand (e.g. adding a `stick` style for everything in a
 structure's HETATM records except this set, since cartoon-only styles don't
 draw ligands at all).
 
+## chem.view3d
+
+### `view3d.render_protein(path, exclude=SOLVENT_AND_IONS, width=600, height=500)`
+
+Render a PDB structure file as an interactive py3Dmol view: a rainbow
+(N -> C) cartoon backbone, plus any HETATM ligand group not in `exclude` as
+colored sticks (cartoon alone only draws the polymer backbone).
+
+- `path` — path to a PDB file.
+- `exclude` — HET codes to leave off the ligand sticks. Defaults to
+  `chem.protein.SOLVENT_AND_IONS`; pass a superset (e.g.
+  `SOLVENT_AND_IONS | {"NAG", "TYS"}`) to also exclude structure-specific
+  non-ligand HETATM groups such as glycosylation sugars or modified residues.
+- `width` / `height` — viewer size in pixels.
+
+Returns the py3Dmol view. Use the call as a notebook cell's last expression
+to display it, or call `.show()` on the result explicitly (e.g. inside an
+`ipywidgets.Output()` context).
+
 ## chem.ids (shared identifier resolution)
 
 Internal to `chem.chembl`/`chem.rcsb`/`chem.alphafold`, not typically called
