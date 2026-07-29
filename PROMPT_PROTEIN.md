@@ -64,13 +64,15 @@ protein.find_pocket(structure, ligand=None, outdir=None)
 5. 採用したポケットの`pocket{N}_atm.pdb`から一意な`(chain, resnum, resname)`のリストを抽出する
 6. `{stem}_info.txt`をパースする。フォーマットは`Pocket N :`という見出し行の後に、タブ区切りの`項目名 : \t値`行が続き、空行でポケットが区切られる。数値に変換できるものは`float`にする
 
-### `_SOLVENT_AND_IONS`(自動検出で除外するHETコード、非網羅的)
+### `SOLVENT_AND_IONS`(自動検出で除外するHETコード、非網羅的)
 
 ```
 HOH, WAT, DOD,
 NA, CL, K, MG, CA, ZN, MN, FE, FE2, CO, NI, CU, CD, LI, RB, CS, BR, IOD, NH4,
 SO4, PO4, GOL, EDO, PEG, PG4, 1PE, P6G, MPD, FMT, ACT, DMS, TRS, BME, EPE, HEPES, IPA, UNX, UNL
 ```
+
+`chem/protein/pocket.py`のモジュールレベル定数で、`chem.protein.SOLVENT_AND_IONS`として`chem.protein`パッケージレベルでも再エクスポートされる(`find_pocket`内部だけでなく、notebookでの表示用にリガンドらしきHETATMを判定する用途にも再利用できるよう公開)。
 
 ## 前提環境
 

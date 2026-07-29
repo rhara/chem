@@ -151,6 +151,15 @@ the ligand's atoms is selected. Returns a dict:
 - `info` — the full raw fpocket score dict for the selected pocket (all
   fields from `*_info.txt`, values converted to `float` where possible).
 
+### `protein.SOLVENT_AND_IONS`
+
+A `frozenset` of common crystallization solvent/ion/additive HET codes (not
+exhaustive) — the same exclusion list `find_pocket`'s ligand auto-detection
+uses. Handy for deciding which HETATM groups in a structure are worth
+displaying as a ligand (e.g. adding a `stick` style for everything in a
+structure's HETATM records except this set, since cartoon-only styles don't
+draw ligands at all).
+
 ## chem.ids (shared identifier resolution)
 
 Internal to `chem.chembl`/`chem.rcsb`/`chem.alphafold`, not typically called

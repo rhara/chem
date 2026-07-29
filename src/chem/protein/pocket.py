@@ -14,7 +14,7 @@ from ..verbosity import is_quiet, logged
 
 # Common crystallization solvent/ion/additive HET codes to exclude when
 # auto-detecting "the" ligand from a structure's HETATM records. Not exhaustive.
-_SOLVENT_AND_IONS = frozenset(
+SOLVENT_AND_IONS = frozenset(
     {
         "HOH", "WAT", "DOD",
         "NA", "CL", "K", "MG", "CA", "ZN", "MN", "FE", "FE2", "CO", "NI", "CU", "CD",
@@ -57,7 +57,7 @@ def _residue_label(residue):
 
 
 def _auto_detect_ligand(structure_path):
-    candidates = [r for r in _hetero_residues(structure_path) if r.get_resname().strip() not in _SOLVENT_AND_IONS]
+    candidates = [r for r in _hetero_residues(structure_path) if r.get_resname().strip() not in SOLVENT_AND_IONS]
     if not candidates:
         raise ValueError(
             f"no non-solvent/ion HETATM group found in {structure_path}; pass ligand explicitly"
