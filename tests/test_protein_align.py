@@ -1,6 +1,39 @@
+import os
+
 import pytest
 
 import chem.protein.structural_align as pa
+
+
+def _atom_line(serial, name, resname, chain, resseq, x, y, z):
+    element = name.strip()[0]
+    return (
+        f"ATOM  {serial:>5} {name:<4} {resname:>3} {chain:1}{resseq:>4}    "
+        f"{x:>8.3f}{y:>8.3f}{z:>8.3f}{1.0:>6.2f}{0.0:>6.2f}          {element:>2}"
+    )
+
+
+def _write_three_residue_chain(path, chain, x_offset=0.0):
+    lines = [
+        _atom_line(1, "CA", "ALA", chain, 1, 0.0 + x_offset, 0.0, 0.0),
+        _atom_line(2, "CA", "GLY", chain, 2, 3.8 + x_offset, 0.0, 0.0),
+        _atom_line(3, "CA", "LEU", chain, 3, 7.6 + x_offset, 0.0, 0.0),
+    ]
+    path.write_text("\n".join(lines) + "\nEND\n")
+
+
+def test_align_writes_reference_even_when_not_in_structures(tmp_path):
+    ref_path = tmp_path / "ref.pdb"
+    mobile_path = tmp_path / "mobile.pdb"
+    _write_three_residue_chain(ref_path, "A")
+    _write_three_residue_chain(mobile_path, "A", x_offset=10.0)
+
+    outdir = tmp_path / "aligned"
+    results = pa.align([str(mobile_path)], reference=str(ref_path), outdir=str(outdir))
+
+    assert sorted(os.listdir(outdir)) == ["mobile.pdb", "ref.pdb"]
+    assert results[str(ref_path)] == 0.0
+    assert results[str(mobile_path)] == pytest.approx(0.0, abs=1e-6)
 
 
 def test_matched_ca_pairs_identical_sequences():

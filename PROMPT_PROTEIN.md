@@ -18,7 +18,7 @@ protein.align(structures, reference=None, chain=None, outdir="aligned")
 ```
 
 - `structures`: 同一ターゲットの構造ファイルパスのリスト(PDB/CIF混在可。`chem.rcsb`/`chem.alphafold`でダウンロードしたファイルをそのまま渡せる)
-- `reference`: アラインメントの基準構造。`structures`へのインデックス(int)またはパス文字列。省略時は`structures[0]`
+- `reference`: アラインメントの基準構造。`structures`へのインデックス(int)またはパス文字列。省略時は`structures[0]`。**`structures`配列に含まれている必要はない** — 含まれていてもいなくても、`outdir`には常に1回だけ書き出される(含まれる場合はアラインメントループ側でスキップする)
 - `chain`: 各構造で使うチェーンIDを明示指定(省略時は下記の自動選択)
 - `outdir`: 座標変換後の構造を書き出す先のディレクトリ(存在しなければ作成)
 - 戻り値: `{path: rmsd}`(シーケンスマッチしたCA原子上のRMSD。reference自身は`0.0`)
@@ -33,7 +33,7 @@ protein.align(structures, reference=None, chain=None, outdir="aligned")
 4. `Bio.Align.PairwiseAligner`(`mode="global"`、`open_gap_score=-10`、`extend_gap_score=-0.5`、`match_score=2`、`mismatch_score=-1`)でreferenceシーケンスと各構造のシーケンスをグローバルアラインメントし、`alignment.aligned`からギャップのないマッチ位置ペアを取り出し、対応するCA原子ペアのリストを作る
 5. マッチしたCA原子ペアが3組未満なら(`_MIN_MATCHED_RESIDUES = 3`)、その構造はアラインメント不可としてスキップ(quiet時以外は`stderr`に警告を出し、処理は継続)
 6. `Bio.PDB.Superimposer`でマッチしたCA原子ペアに対してKabsch法によるフィッティングを行い、得られた回転・並進を**構造の全原子**(タンパク質だけでなくリガンド・水も含む)に適用する。これにより、align出力後もリガンドの相対位置が保たれ、後続の`find_pocket`にそのまま使える
-7. `Bio.PDB.PDBIO`で、referenceも含めて各構造を`outdir`に`{入力ファイルのstem}.pdb`として書き出す(**入力がCIFでも常にPDB形式で出力する** — fpocketがPDB形式を要求するための一貫性)
+7. `Bio.PDB.PDBIO`で、referenceも含めて各構造を`outdir`に`{入力ファイルのstem}.pdb`として書き出す(**入力がCIFでも常にPDB形式で出力する** — fpocketがPDB形式を要求するための一貫性)。referenceの書き出しはメインループの前に1回だけ行い、`structures`側のループでは`path == ref_path`のときスキップする(referenceが`structures`に含まれない場合でも正しく書き出される)
 
 ## chem.protein.find_pocket
 

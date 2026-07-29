@@ -9,3 +9,5 @@ notebooks/*.tsv
 notebooks/*.csv
 notebooks/data/
 notebooks/af_data/
+notebooks/aligned/
+notebooks/pocket_out/

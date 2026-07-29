@@ -75,7 +75,10 @@ def align(structures, reference=None, chain=None, outdir="aligned"):
     structures: list of PDB/CIF file paths for the same protein (e.g. downloaded via
         chem.rcsb/chem.alphafold).
     reference: which structure to align everything onto -- an index into
-        `structures`, or one of its paths. Defaults to structures[0].
+        `structures`, or a path. Defaults to structures[0]. The reference does not
+        need to be a member of `structures`; either way it is written to `outdir`
+        exactly once (it is skipped in the alignment loop if it also appears in
+        `structures`).
     chain: optional chain id to use in every structure, overriding auto-selection.
         Default: auto-select each structure's chain with the most standard amino
         acid residues (its primary polymer chain) -- e.g. thrombin's catalytic
@@ -110,16 +113,18 @@ def align(structures, reference=None, chain=None, outdir="aligned"):
     io = PDBIO()
     results = {}
 
+    ref_out_path = os.path.join(outdir, os.path.splitext(os.path.basename(ref_path))[0] + ".pdb")
+    io.set_structure(ref_structure)
+    io.save(ref_out_path)
+    results[ref_path] = 0.0
+
     for path in tqdm(
         structures, desc=f"aligning structures to {ref_path}", unit="structure", disable=is_quiet()
     ):
-        out_path = os.path.join(outdir, os.path.splitext(os.path.basename(path))[0] + ".pdb")
-
         if path == ref_path:
-            io.set_structure(ref_structure)
-            io.save(out_path)
-            results[path] = 0.0
             continue
+
+        out_path = os.path.join(outdir, os.path.splitext(os.path.basename(path))[0] + ".pdb")
 
         try:
             mob_structure = _load_structure(path)

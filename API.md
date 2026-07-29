@@ -89,7 +89,8 @@ Sequence-align and structurally superpose a set of same-target structures
 
 - `structures` — list of PDB/CIF file paths for the same protein.
 - `reference` — which structure to align everything onto: an index into
-  `structures`, or one of its paths. Defaults to `structures[0]`.
+  `structures`, or a path. Defaults to `structures[0]`. Does not need to be a
+  member of `structures`; either way it's written to `outdir` exactly once.
 - `chain` — optional chain id to use in every structure, overriding
   auto-selection. Default: each structure's chain with the most standard
   amino acid residues (its primary polymer chain — e.g. thrombin's catalytic

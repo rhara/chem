@@ -126,7 +126,8 @@ from chem import protein
 # (mix PDB/CIF, RCSB/AlphaFold freely). Writes one PDB file per input into outdir.
 rmsd = protein.align(
     ["data/1PPB.cif", "data/1BTH.cif", "af_data/AF-P00734-F1.pdb"],
-    reference=None,  # index into the list, or a path; defaults to the first entry
+    reference=None,  # index into the list, or any path (need not be in the list);
+                     # defaults to the first entry
     chain=None,  # override auto chain selection (see below)
     outdir="aligned",
 )
@@ -146,7 +147,9 @@ against the reference chain, and superposes the whole structure (Kabsch fit on t
 sequence-matched CA atoms, applied to every atom including ligands and waters) onto
 the reference's frame. Every input, including the reference, is written out as a
 PDB file in `outdir` so each can be loaded and overlaid individually (e.g. one
-py3Dmol `addModel` call per file). Returns `{path: rmsd}`; a structure with too few
+py3Dmol `addModel` call per file) -- the reference does not need to be a member of
+the input list; either way it's written to `outdir` exactly once. Returns
+`{path: rmsd}`; a structure with too few
 residues in common with the reference is skipped with a warning rather than raising.
 
 `find_pocket` runs [fpocket](https://github.com/Discngine/fpocket) on a PDB file
