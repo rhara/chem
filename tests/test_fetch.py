@@ -1,6 +1,18 @@
 import chem.chembl.fetch as cf
 
 
+def test_download_activities_skips_existing_output(tmp_path, monkeypatch):
+    output = tmp_path / "activities.tsv"
+    output.write_text("molecule_chembl_id\tsmiles\nCHEMBL1\tCCO\nCHEMBL2\tCCN\n")
+
+    def fail_if_called(*args, **kwargs):
+        raise AssertionError("should not hit the network for an existing output file")
+
+    monkeypatch.setattr(cf, "resolve_target_chembl_id", fail_if_called)
+    n = cf.download_activities("CHEMBL204", output=str(output))
+    assert n == 2
+
+
 def test_normalize_smiles_strips_hcl_salt():
     # hydrochloride salt: keep the parent, drop the HCl counterion
     smi = cf._normalize_smiles("CN=C(N)N1CCC(Oc2ccccc2)CC1.Cl")

@@ -155,17 +155,25 @@ def download_activities(id, mw=None, normalize_smiles=False, output="activities.
         Structure Pipeline (get its parent compound) before computing mw, and aggregate
         duplicate compounds (see above).
     output: destination file path; delimiter is chosen from the extension
-        (".tsv" -> tab, ".csv" -> comma, default tab).
+        (".tsv" -> tab, ".csv" -> comma, default tab). If this file already exists,
+        it is left as-is and not re-downloaded (as with chem.rcsb/chem.alphafold).
 
-    Returns the number of rows written.
+    Returns the number of rows written, or already present in output if it existed.
     """
     if mw is not None:
         if len(mw) != 2:
             raise ValueError("mw must be [lower, upper]")
         lo, hi = mw
 
-    target_chembl_id = resolve_target_chembl_id(id)
     delimiter = "," if str(output).lower().endswith(".csv") else "\t"
+
+    if os.path.exists(output):
+        if not is_quiet():
+            print(f"{output} already exists, skipping download", file=sys.stderr)
+        with open(output, newline="") as f:
+            return max(sum(1 for _ in csv.reader(f, delimiter=delimiter)) - 1, 0)
+
+    target_chembl_id = resolve_target_chembl_id(id)
 
     records = []
     for act in _fetch_activity_pages(target_chembl_id):
