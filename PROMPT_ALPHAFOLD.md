@@ -45,7 +45,7 @@ alphafold.download_structures(id, plddt_thres=70.0, outdir="data", filetype="cif
 
 ## サンプルノートブック
 
-`notebooks/00_getting_started.ipynb`の末尾に、`THRB_HUMAN`(トロンビン)を対象としたサンプルセルを追加する:
+`notebooks/example_proteins.ipynb`の末尾に、`THRB_HUMAN`(トロンビン)を対象としたサンプルセルを追加する:
 1. `alphafold.download_structures("THRB_HUMAN", outdir="af_data", filetype="pdb")`を実行(`from chem import alphafold`)
 2. `py3Dmol`で予測構造をカートゥーン表示し、B-factor列に格納されているper-residue pLDDT信頼度でカラーリングする(`colorscheme={"prop": "b", "gradient": "roygb", "min": 50, "max": 90}`)
 

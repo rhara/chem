@@ -73,7 +73,7 @@ parent_chembl_id, target_chembl_id, smiles, mw, n, pchembl_mean, pchembl_median,
 
 ## サンプルノートブック
 
-`notebooks/00_getting_started.ipynb`に、`BRAF_HUMAN`を対象としたサンプルセルを追加する:
+`notebooks/example_chembl.ipynb`に、`BRAF_HUMAN`を対象としたサンプルセルを追加する:
 1. `chembl.download_activities("BRAF_HUMAN", mw=[250, 650], normalize_smiles=True, output="braf_activities.tsv")`を実行(`from chem import chembl`)
 2. `pandas`で読み込み、`pchembl_mean`降順で上位を表示
 3. 最も活性の高い化合物をRDKitの`MolToImage`で描画

@@ -1,4 +1,5 @@
 import os
+import re
 import sys
 
 import requests
@@ -12,6 +13,9 @@ RCSB_GRAPHQL_API = "https://data.rcsb.org/graphql"
 RCSB_FILES_API = "https://files.rcsb.org/download"
 
 FILETYPES = ("cif", "pdb", "both")
+
+# PDB entry ids are 4 characters: a digit followed by three alphanumerics.
+PDB_ID_RE = re.compile(r"^[0-9][A-Z0-9]{3}$", re.IGNORECASE)
 
 _SEARCH_PAGE_SIZE = 1000
 _RESOLUTION_BATCH_SIZE = 200
@@ -120,6 +124,21 @@ def _select_entries(resolutions, resolution_thres):
     ]
 
 
+def _validate_pdb_ids(ids):
+    """Normalize and validate an explicit collection of PDB entry ids.
+
+    Raises ValueError if the collection is empty or any id isn't shaped like a
+    PDB entry id (4 characters: a digit followed by three alphanumerics).
+    """
+    entry_ids = [str(i).upper() for i in ids]
+    if not entry_ids:
+        raise ValueError("id list is empty")
+    bad = [i for i in entry_ids if not PDB_ID_RE.match(i)]
+    if bad:
+        raise ValueError(f"not valid PDB ids: {bad}")
+    return entry_ids
+
+
 def _download_one(entry_id, outdir, filetype):
     """Download the requested file(s) for one PDB entry into outdir, skipping any
     file that already exists on disk.
@@ -149,16 +168,21 @@ def _download_one(entry_id, outdir, filetype):
 
 @logged
 def download_structures(id, resolution_thres=None, outdir="data", filetype="cif"):
-    """Download RCSB PDB structure files for a target into a directory.
+    """Download RCSB PDB structure files for a target, or an explicit list of PDB
+    entries, into a directory.
 
-    Resolves id to a UniProt accession, finds every PDB entry whose polymer entities
-    are annotated with that accession (via the RCSB Search API), optionally filters
-    by resolution, and downloads each qualifying entry's structure file(s). A file
-    already present in outdir (same entry id and extension) is left as-is and not
+    When id is a ChEMBL target id, UniProt accession, or UniProt entry name, it's
+    resolved to a UniProt accession, and every PDB entry whose polymer entities are
+    annotated with that accession (via the RCSB Search API) is downloaded. When id
+    is instead a list (or tuple/set) of PDB entry ids (e.g. ["6LU7", "7BQY"]), those
+    entries are downloaded directly, with no target resolution or search step.
+    Either way, entries can optionally be filtered by resolution, and a file already
+    present in outdir (same entry id and extension) is left as-is and not
     re-downloaded, so repeated calls only fetch what's missing.
 
     id: ChEMBL target id (e.g. "CHEMBL204"), UniProt accession (e.g. "P00734"),
-        or UniProt entry name (e.g. "THRB_HUMAN").
+        UniProt entry name (e.g. "THRB_HUMAN"), or a list of PDB entry ids (e.g.
+        ["6LU7", "7BQY"]) to download directly.
     resolution_thres: optional maximum resolution in Angstrom, inclusive. When set,
         entries without a resolution (e.g. NMR structures) are excluded; when None
         (default), all entries are kept regardless of resolution.
@@ -172,12 +196,15 @@ def download_structures(id, resolution_thres=None, outdir="data", filetype="cif"
     if filetype not in FILETYPES:
         raise ValueError(f"filetype must be one of {FILETYPES}")
 
-    accession = resolve_uniprot_accession_any(id)
-    entry_ids = _search_entry_ids(accession)
-    if not entry_ids:
-        raise ValueError(
-            f"no PDB entries found for UniProt accession {accession} (from id '{id}')"
-        )
+    if isinstance(id, (list, tuple, set)):
+        entry_ids = _validate_pdb_ids(id)
+    else:
+        accession = resolve_uniprot_accession_any(id)
+        entry_ids = _search_entry_ids(accession)
+        if not entry_ids:
+            raise ValueError(
+                f"no PDB entries found for UniProt accession {accession} (from id '{id}')"
+            )
 
     resolutions = _fetch_resolutions(entry_ids)
     selected = _select_entries(resolutions, resolution_thres)

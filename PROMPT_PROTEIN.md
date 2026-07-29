@@ -83,7 +83,7 @@ SO4, PO4, GOL, EDO, PEG, PG4, 1PE, P6G, MPD, FMT, ACT, DMS, TRS, BME, EPE, HEPES
 
 ## サンプルノートブック
 
-`notebooks/00_getting_started.ipynb`の末尾に、`chem.rcsb`でダウンロードした複数のトロンビン構造をアラインし、py3Dmolで重ね書き表示するサンプルセルを追加する。fpocketのサンプルは別途、リガンド入り構造(例: トリプシン+ベンザミジン `3PTB`)で`find_pocket`を実行し、選ばれたポケットの残基をハイライト表示するセルを追加する。
+`notebooks/example_proteins.ipynb`の末尾に、`chem.rcsb`でダウンロードした複数のトロンビン構造をアラインし、py3Dmolで重ね書き表示するサンプルセルを追加する。fpocketのサンプルは別途、リガンド入り構造(例: トリプシン+ベンザミジン `3PTB`)で`find_pocket`を実行し、選ばれたポケットの残基をハイライト表示するセルを追加する。
 
 ## 注意
 

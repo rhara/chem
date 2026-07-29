@@ -18,6 +18,15 @@ python -m ipykernel install --user --name chem --display-name "Python 3.12 (chem
 
 Then select the "Python 3.12 (chem)" kernel in Jupyter.
 
+Notebooks under `notebooks/` are committed with outputs stripped. After
+cloning, run this once to have `git add`/`git commit` strip a notebook's
+outputs and execution counts automatically (the working-tree file on disk is
+untouched -- only what's staged/committed is stripped):
+
+```bash
+nbstripout --install --attributes .gitattributes
+```
+
 If you only need the pure-Python parts (RDKit, no AmberTools/`tleap`/`sander`/
 `antechamber`/`cpptraj`), you can instead do a plain venv + pip install:
 
@@ -85,15 +94,19 @@ rcsb.download_structures(
     outdir="data",  # destination directory, created if missing
     filetype="cif",  # "cif" (default), "pdb", or "both"
 )
+
+# or download specific PDB entries directly, skipping target resolution entirely
+rcsb.download_structures(["6LU7", "7BQY"], outdir="data")
 ```
 
 Resolves `id` to a UniProt accession, finds every PDB entry whose polymer entities
 are annotated with that accession via the RCSB Search API, and downloads each
 qualifying entry's structure file(s) from `files.rcsb.org`. When `resolution_thres`
 is set, entries without a resolution (e.g. NMR structures) are excluded; when it's
-left as `None`, every entry is downloaded regardless of resolution. A file already
-present in `outdir` is left as-is and not re-downloaded, so re-running only fetches
-what's missing.
+left as `None`, every entry is downloaded regardless of resolution. Passing a list
+(or tuple/set) of PDB entry ids as `id` instead downloads exactly those entries,
+with no target resolution or search step. A file already present in `outdir` is
+left as-is and not re-downloaded, so re-running only fetches what's missing.
 
 ## chem.alphafold — AlphaFold DB predicted structure download
 

@@ -32,3 +32,30 @@ def test_select_entries_threshold_is_inclusive():
 def test_download_structures_rejects_bad_filetype():
     with pytest.raises(ValueError):
         rf.download_structures("P00734", filetype="mol2")
+
+
+def test_validate_pdb_ids_normalizes_case():
+    assert rf._validate_pdb_ids(["1abc", "2XYZ"]) == ["1ABC", "2XYZ"]
+
+
+def test_validate_pdb_ids_rejects_bad_shape():
+    with pytest.raises(ValueError):
+        rf._validate_pdb_ids(["1ABC", "TOOLONG"])
+
+
+def test_validate_pdb_ids_rejects_empty_list():
+    with pytest.raises(ValueError):
+        rf._validate_pdb_ids([])
+
+
+def test_download_structures_with_explicit_pdb_ids_skips_resolution(tmp_path, monkeypatch):
+    def fail_if_called(*args, **kwargs):
+        raise AssertionError("should not resolve a target when explicit PDB ids are given")
+
+    monkeypatch.setattr(rf, "resolve_uniprot_accession_any", fail_if_called)
+    monkeypatch.setattr(rf, "_search_entry_ids", fail_if_called)
+    monkeypatch.setattr(rf, "_fetch_resolutions", lambda ids: {i: None for i in ids})
+    monkeypatch.setattr(rf, "_download_one", lambda entry_id, outdir, filetype: True)
+
+    n = rf.download_structures(["1abc", "2xyz"], outdir=str(tmp_path))
+    assert n == 2

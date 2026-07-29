@@ -40,14 +40,18 @@ written (or already present, if `output` existed).
 
 ### `rcsb.download_structures(id, resolution_thres=None, outdir="data", filetype="cif")`
 
-Download RCSB PDB structure files for a target into a directory. Resolves
-`id` to a UniProt accession, finds every PDB entry whose polymer entities are
-annotated with that accession via the RCSB Search API, optionally filters by
-resolution, and downloads each qualifying entry's structure file(s) from
-`files.rcsb.org`.
+Download RCSB PDB structure files for a target, or an explicit list of PDB
+entries, into a directory. When `id` is a ChEMBL target id, UniProt accession,
+or UniProt entry name, it's resolved to a UniProt accession, and every PDB
+entry whose polymer entities are annotated with that accession via the RCSB
+Search API is downloaded. When `id` is instead a list (or tuple/set) of PDB
+entry ids (e.g. `["6LU7", "7BQY"]`), those entries are downloaded directly,
+skipping target resolution and search entirely. Either way, downloads come
+from `files.rcsb.org` and can optionally be filtered by resolution.
 
 - `id` — ChEMBL target id, UniProt accession, or UniProt entry name (same
-  three forms as `chembl.download_activities`).
+  three forms as `chembl.download_activities`), or a list of PDB entry ids to
+  download directly.
 - `resolution_thres` — optional maximum resolution in Å, inclusive. When set,
   entries without a resolution (e.g. NMR structures) are excluded; when
   `None` (default), every entry is kept regardless of resolution.

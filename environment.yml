@@ -8,6 +8,7 @@ dependencies:
   - chembl_structure_pipeline
   - nglview
   - fpocket
+  - nbstripout
   - pip
   - pip:
       - -e .[dev,notebook]
