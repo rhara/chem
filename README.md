@@ -197,9 +197,13 @@ view3d.render_protein(
 ```
 
 Cartoon-only styles don't draw ligands, so any HETATM group not in `exclude` is
-added as colored sticks. Returns the py3Dmol view rather than displaying it
-directly, so it can also be `.show()`ed explicitly (e.g. inside an
-`ipywidgets.Output()` context, to redraw on a widget callback).
+added as pink sticks. A caption showing the PDB id, chain ids, ligand HET
+codes, and experimental resolution (parsed from the file's `REMARK 2
+RESOLUTION` record, or `"N/A"` if absent -- e.g. NMR/AlphaFold/`protein.align`
+output) is displayed above the view. `render_protein` returns the py3Dmol
+view rather than displaying it directly, so it can also be `.show()`ed
+explicitly (e.g. inside an `ipywidgets.Output()` context, to redraw on a
+widget callback).
 
 ### A note on `conda activate` and plain `python`/`pip`
 

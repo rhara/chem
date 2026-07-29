@@ -26,15 +26,21 @@ view3d.render_protein(path, exclude=SOLVENT_AND_IONS, width=600, height=500)
 - `exclude`: リガンドのstick表示から除外するHETコードの集合。デフォルトは`chem.protein.SOLVENT_AND_IONS`。呼び出し側で`SOLVENT_AND_IONS | {"NAG", "TYS"}`のように追加のコードを合わせて渡せば、構造固有の非リガンドHETATM(糖鎖修飾、修飾残基など)も除外できる
 - `width`/`height`: ビューアのピクセルサイズ
 - 戻り値: `py3Dmol.view`インスタンス(内部で`.show()`は呼ばない。notebookのセルの最終式として使うか、呼び出し側で`.show()`を呼んで表示する)
+- ビュー本体の前に、PDB ID・chain名・リガンド名・解像度を1行にまとめたキャプションを`IPython.display.display(HTML(...))`で表示する
 
 ## 実装方法
 
 1. `path`のPDBテキストを読み込む
 2. `HETATM`で始まる行から残基名(18-20列目、0-indexedで`line[17:20]`)を集め、`exclude`との差集合をソートして`ligand_resnames`とする(この部分は`_ligand_resnames(pdb_text, exclude)`としてテスト可能な形で切り出す)
-3. `py3Dmol.view(width=width, height=height)`を作り、`addModel(pdb_text, "pdb")`
-4. `setStyle({"cartoon": {"color": "spectrum", "colorscheme": "roygb"}})` -- "spectrum"単体だとN末端が紫がかった3Dmol.jsデフォルトのsinebowになるため、`colorscheme="roygb"`で青(N)→水色→緑→黄→橙→赤(C)の通常の配色にする
-5. `ligand_resnames`が空でなければ`addStyle({"resn": ligand_resnames}, {"stick": {"colorscheme": "yellowCarbon"}})`(カートゥーンだけではリガンドが描画されないため)
-6. `zoomTo()`して`view`を返す(`.show()`は呼ばない -- 戻り値をnotebookセルの最終式にすれば`_repr_html_`経由で自動表示される)
+3. キャプション用の付随情報を集める(いずれもテスト可能なヘルパー関数に切り出す):
+   - `_chain_ids(pdb_text)`: `ATOM`で始まる行のchain列(22列目、0-indexedで`line[21]`)から重複を除きソートしたリスト。`ATOM`行が無ければ空リスト
+   - `_resolution(pdb_text)`: legacy PDB形式のヘッダにある`REMARK   2 RESOLUTION.    N.NN ANGSTROMS.`行を正規表現`^REMARK\s+2\s+RESOLUTION\.\s+([\d.]+)\s+ANGSTROMS\.`(`re.MULTILINE`)でパースし、`"N.NN Å"`の形式で返す。マッチしなければ`"N/A"`(NMR構造、AlphaFold予測構造、`chem.protein.align`の出力(Bio.PDBの`PDBIO`はヘッダ/REMARKを保持しないため)はいずれもこのケースになる)
+   - `_caption(path, pdb_text, ligand_resnames)`: `path`のファイル名(拡張子除く)をPDB IDとして、`f"PDB ID: {pdb_id} &nbsp;|&nbsp; Chain: {chains} &nbsp;|&nbsp; Ligand: {ligands} &nbsp;|&nbsp; Resolution: {resolution}"`の形式の文字列を組み立てる。`chains`は`_chain_ids`の結果をカンマ区切りにしたもの(空なら`"N/A"`)、`ligands`は`ligand_resnames`をカンマ区切りにしたもの(空なら`"none"`)
+4. `IPython.display.display(HTML(f"<b>{caption}</b>"))`でキャプションを表示する(`render_protein`本体の`display`/`HTML`は`IPython.display`からimportする)
+5. `py3Dmol.view(width=width, height=height)`を作り、`addModel(pdb_text, "pdb")`
+6. `setStyle({"cartoon": {"color": "spectrum", "colorscheme": "roygb"}})` -- "spectrum"単体だとN末端が紫がかった3Dmol.jsデフォルトのsinebowになるため、`colorscheme="roygb"`で青(N)→水色→緑→黄→橙→赤(C)の通常の配色にする
+7. `ligand_resnames`が空でなければ`addStyle({"resn": ligand_resnames}, {"stick": {"color": "pink"}})`(カートゥーンだけではリガンドが描画されないため)。`"colorscheme": "yellowCarbon"`ではなく単色`"color": "pink"`を使う -- 3Dmol.jsに`pinkCarbon`プリセットは存在せず、既存の8種の`*Carbon`プリセットのうち`yellowCarbon`はカートゥーンの`roygb`スペクトルと色が衝突するため
+8. `zoomTo()`して`view`を返す(`.show()`は呼ばない -- 戻り値をnotebookセルの最終式にすれば`_repr_html_`経由で自動表示される)
 
 ## 前提環境
 
@@ -49,4 +55,4 @@ view3d.render_protein(path, exclude=SOLVENT_AND_IONS, width=600, height=500)
 ## 注意
 
 - このリポジトリはdd_*プロジェクト群、`~/lab/chembl`、`dd_chembl`とは無関係な独立プロジェクト。それらのコードやロジックを参照・流用しない
-- テストは`tests/test_view3d.py`にネットワーク・ブラウザ不要な範囲(`_ligand_resnames`の除外ロジック、`render_protein`が返す`py3Dmol.view`の内部JS文字列に期待するスタイルコマンドが含まれる/含まれないことの確認)のみ追加する。実際のブラウザ上での表示確認は手動で行う
+- テストは`tests/test_view3d.py`にネットワーク・ブラウザ不要な範囲(`_ligand_resnames`の除外ロジック、`_chain_ids`のchain収集ロジック、`_resolution`のREMARK 2パースロジック(値あり/なし双方)、`_caption`の文字列組み立て、`render_protein`が返す`py3Dmol.view`の内部JS文字列に期待するスタイルコマンドが含まれる/含まれないことの確認、`chem.view3d.render.display`を`monkeypatch`で差し替えてキャプション表示が呼ばれることの確認)のみ追加する。実際のブラウザ上での表示確認は手動で行う

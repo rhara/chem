@@ -177,7 +177,7 @@ draw ligands at all).
 
 Render a PDB structure file as an interactive py3Dmol view: a rainbow
 (N -> C) cartoon backbone, plus any HETATM ligand group not in `exclude` as
-colored sticks (cartoon alone only draws the polymer backbone).
+pink sticks (cartoon alone only draws the polymer backbone).
 
 - `path` — path to a PDB file.
 - `exclude` — HET codes to leave off the ligand sticks. Defaults to
@@ -185,6 +185,13 @@ colored sticks (cartoon alone only draws the polymer backbone).
   `SOLVENT_AND_IONS | {"NAG", "TYS"}`) to also exclude structure-specific
   non-ligand HETATM groups such as glycosylation sugars or modified residues.
 - `width` / `height` — viewer size in pixels.
+
+Displays a caption above the view with the PDB id (`path`'s filename stem),
+the distinct chain ids found in `ATOM` records, the ligand HET codes shown as
+sticks (`"none"` if empty), and the experimental resolution parsed from the
+file's legacy-PDB `REMARK 2 RESOLUTION` record (`"N/A"` if absent — e.g. NMR
+structures, AlphaFold predictions, or files written by `chem.protein.align`,
+which doesn't preserve header/REMARK records).
 
 Returns the py3Dmol view. Use the call as a notebook cell's last expression
 to display it, or call `.show()` on the result explicitly (e.g. inside an
