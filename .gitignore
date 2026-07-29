@@ -8,3 +8,4 @@ dist/
 notebooks/*.tsv
 notebooks/*.csv
 notebooks/data/
+notebooks/af_data/

@@ -91,6 +91,28 @@ left as `None`, every entry is downloaded regardless of resolution. A file alrea
 present in `outdir` is left as-is and not re-downloaded, so re-running only fetches
 what's missing.
 
+## chem.alphafold — AlphaFold DB predicted structure download
+
+```python
+from chem import alphafold
+
+alphafold.download_structures(
+    "THRB_HUMAN",  # ChEMBL target id, UniProt accession, or UniProt entry name
+    plddt_thres=70.0,  # optional min average pLDDT confidence (0-100), inclusive
+    outdir="data",  # destination directory, created if missing
+    filetype="cif",  # "cif" (default), "pdb", or "both"
+)
+```
+
+Resolves `id` to a UniProt accession and downloads every AlphaFold DB prediction
+entry for it (usually one, but very large proteins may be split into fragments,
+and some targets without an official prediction have community-submitted
+alternatives instead), using the download URLs the AlphaFold API itself returns.
+When `plddt_thres` is set, only entries whose average pLDDT confidence
+(`globalMetricValue`) meets the threshold are kept; when left as `None`, every
+entry is downloaded regardless of confidence. As with `chem.rcsb`, a file already
+present in `outdir` is left as-is and not re-downloaded.
+
 ### A note on `conda activate` and plain `python`/`pip`
 
 If your shell auto-activates another conda env at startup (e.g. via
@@ -110,6 +132,7 @@ conda run -n chem python -c "import rdkit; print(rdkit.__version__)"
 - `src/chem/` — core package (`verbosity.py`: the `CHEM_QUIETNESS`-aware `@logged` decorator; `ids.py`: shared ChEMBL target id / UniProt accession / UniProt entry name resolution)
 - `src/chem/chembl/` — ChEMBL data access (`fetch.py`: `download_activities`, re-exported at package level)
 - `src/chem/rcsb/` — RCSB PDB structure download (`fetch.py`: `download_structures`, re-exported at package level)
+- `src/chem/alphafold/` — AlphaFold DB structure download (`fetch.py`: `download_structures`, re-exported at package level)
 - `notebooks/` — example notebooks
 - `tests/` — pytest test suite
 
