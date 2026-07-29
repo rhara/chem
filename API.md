@@ -175,9 +175,10 @@ draw ligands at all).
 
 ### `view3d.render_protein(path, exclude=SOLVENT_AND_IONS, width=600, height=500)`
 
-Render a PDB structure file as an interactive py3Dmol view: a rainbow
-(N -> C) cartoon backbone, plus any HETATM ligand group not in `exclude` as
-pink sticks (cartoon alone only draws the polymer backbone).
+Display a PDB structure file as an interactive py3Dmol view, followed by a
+caption: a rainbow (N -> C) cartoon backbone, plus any HETATM ligand group
+not in `exclude` as magenta sticks (cartoon alone only draws the polymer
+backbone), then -- below the view -- a caption line.
 
 - `path` — path to a PDB file.
 - `exclude` — HET codes to leave off the ligand sticks. Defaults to
@@ -186,16 +187,16 @@ pink sticks (cartoon alone only draws the polymer backbone).
   non-ligand HETATM groups such as glycosylation sugars or modified residues.
 - `width` / `height` — viewer size in pixels.
 
-Displays a caption above the view with the PDB id (`path`'s filename stem),
-the distinct chain ids found in `ATOM` records, the ligand HET codes shown as
+The caption below the view shows the PDB id (`path`'s filename stem), the
+distinct chain ids found in `ATOM` records, the ligand HET codes shown as
 sticks (`"none"` if empty), and the experimental resolution parsed from the
 file's legacy-PDB `REMARK 2 RESOLUTION` record (`"N/A"` if absent — e.g. NMR
 structures, AlphaFold predictions, or files written by `chem.protein.align`,
 which doesn't preserve header/REMARK records).
 
-Returns the py3Dmol view. Use the call as a notebook cell's last expression
-to display it, or call `.show()` on the result explicitly (e.g. inside an
-`ipywidgets.Output()` context).
+Displays the view and caption directly as a side effect and returns nothing
+— just call it, no need to chain `.show()` or use it as a cell's last
+expression.
 
 ## chem.ids (shared identifier resolution)
 

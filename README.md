@@ -186,8 +186,8 @@ the selected pocket.
 from chem import view3d
 from chem.protein import SOLVENT_AND_IONS
 
-# Rainbow (N -> C) cartoon backbone, plus any HETATM ligand group as sticks.
-# Use as a notebook cell's last expression to display it.
+# Rainbow (N -> C) cartoon backbone, plus any HETATM ligand group as sticks,
+# followed by a caption. Displays directly -- just call it.
 view3d.render_protein(
     "data/1PPB.pdb",
     exclude=SOLVENT_AND_IONS | {"NAG"},  # default: SOLVENT_AND_IONS
@@ -197,13 +197,12 @@ view3d.render_protein(
 ```
 
 Cartoon-only styles don't draw ligands, so any HETATM group not in `exclude` is
-added as pink sticks. A caption showing the PDB id, chain ids, ligand HET
-codes, and experimental resolution (parsed from the file's `REMARK 2
+added as magenta sticks. Below the view, a caption shows the PDB id, chain ids,
+ligand HET codes, and experimental resolution (parsed from the file's `REMARK 2
 RESOLUTION` record, or `"N/A"` if absent -- e.g. NMR/AlphaFold/`protein.align`
-output) is displayed above the view. `render_protein` returns the py3Dmol
-view rather than displaying it directly, so it can also be `.show()`ed
-explicitly (e.g. inside an `ipywidgets.Output()` context, to redraw on a
-widget callback).
+output). `render_protein` displays the view and caption directly and returns
+nothing, so there's no need to chain `.show()` or use it as a cell's last
+expression.
 
 ### A note on `conda activate` and plain `python`/`pip`
 

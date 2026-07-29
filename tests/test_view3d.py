@@ -1,7 +1,14 @@
 import py3Dmol
 
 from chem.protein import SOLVENT_AND_IONS
-from chem.view3d.render import _caption, _chain_ids, _ligand_resnames, _resolution, render_protein
+from chem.view3d.render import (
+    _build_view,
+    _caption,
+    _chain_ids,
+    _ligand_resnames,
+    _resolution,
+    render_protein,
+)
 
 
 def _atom_line(serial, name, resname, chain, resseq, x, y, z, record="ATOM"):
@@ -90,7 +97,37 @@ def test_caption_defaults_when_no_chain_or_ligand():
     assert "Resolution: N/A" in caption
 
 
-def test_render_protein_displays_caption(tmp_path, monkeypatch):
+def test_build_view_has_ligand_style(tmp_path):
+    pdb_text = "\n".join(
+        [
+            _atom_line(1, "CA", "ALA", "A", 1, 0.0, 0.0, 0.0),
+            _atom_line(2, "C1", "LIG", "A", 200, 10.0, 10.0, 10.0, record="HETATM"),
+            _atom_line(3, "O1", "HOH", "A", 300, 20.0, 20.0, 20.0, record="HETATM"),
+        ]
+    )
+    ligand_resnames = _ligand_resnames(pdb_text, SOLVENT_AND_IONS)
+
+    view = _build_view(pdb_text, ligand_resnames, 600, 500)
+    assert isinstance(view, py3Dmol.view)
+    assert '"resn": ["LIG"]' in view.startjs
+    assert '"color": "magenta"' in view.startjs
+    assert "HOH" not in view.startjs.split("addStyle")[1]
+
+
+def test_build_view_no_ligand_style_when_only_solvent():
+    pdb_text = "\n".join(
+        [
+            _atom_line(1, "CA", "ALA", "A", 1, 0.0, 0.0, 0.0),
+            _atom_line(2, "O1", "HOH", "A", 300, 20.0, 20.0, 20.0, record="HETATM"),
+        ]
+    )
+    ligand_resnames = _ligand_resnames(pdb_text, SOLVENT_AND_IONS)
+
+    view = _build_view(pdb_text, ligand_resnames, 600, 500)
+    assert "stick" not in view.startjs
+
+
+def test_render_protein_shows_view_then_caption_and_returns_none(tmp_path, monkeypatch):
     lines = [
         "REMARK   2 RESOLUTION.    1.50 ANGSTROMS.",
         _atom_line(1, "CA", "ALA", "H", 1, 0.0, 0.0, 0.0),
@@ -99,41 +136,18 @@ def test_render_protein_displays_caption(tmp_path, monkeypatch):
     path = tmp_path / "1ABC.pdb"
     _write_pdb(path, lines)
 
-    shown = []
-    monkeypatch.setattr("chem.view3d.render.display", lambda obj: shown.append(obj.data))
+    events = []
+    monkeypatch.setattr(py3Dmol.view, "show", lambda self: events.append("view"))
+    monkeypatch.setattr(
+        "chem.view3d.render.display", lambda obj: events.append(("caption", obj.data))
+    )
 
-    render_protein(str(path))
+    result = render_protein(str(path))
 
-    assert len(shown) == 1
-    assert "PDB ID: 1ABC" in shown[0]
-    assert "Chain: H" in shown[0]
-    assert "Ligand: LIG" in shown[0]
-    assert "Resolution: 1.50 Å" in shown[0]
-
-
-def test_render_protein_returns_view_with_ligand_style(tmp_path):
-    lines = [
-        _atom_line(1, "CA", "ALA", "A", 1, 0.0, 0.0, 0.0),
-        _atom_line(2, "C1", "LIG", "A", 200, 10.0, 10.0, 10.0, record="HETATM"),
-        _atom_line(3, "O1", "HOH", "A", 300, 20.0, 20.0, 20.0, record="HETATM"),
-    ]
-    path = tmp_path / "structure.pdb"
-    _write_pdb(path, lines)
-
-    view = render_protein(str(path))
-    assert isinstance(view, py3Dmol.view)
-    assert '"resn": ["LIG"]' in view.startjs
-    assert '"color": "pink"' in view.startjs
-    assert "HOH" not in view.startjs.split("addStyle")[1]
-
-
-def test_render_protein_no_ligand_style_when_only_solvent(tmp_path):
-    lines = [
-        _atom_line(1, "CA", "ALA", "A", 1, 0.0, 0.0, 0.0),
-        _atom_line(2, "O1", "HOH", "A", 300, 20.0, 20.0, 20.0, record="HETATM"),
-    ]
-    path = tmp_path / "structure.pdb"
-    _write_pdb(path, lines)
-
-    view = render_protein(str(path))
-    assert "stick" not in view.startjs
+    assert result is None
+    assert events[0] == "view"
+    assert events[1][0] == "caption"
+    assert "PDB ID: 1ABC" in events[1][1]
+    assert "Chain: H" in events[1][1]
+    assert "Ligand: LIG" in events[1][1]
+    assert "Resolution: 1.50 Å" in events[1][1]
