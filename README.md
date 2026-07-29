@@ -2,7 +2,7 @@
 
 Chemistry utilities for interactive use in Jupyter notebooks.
 
-Currently a minimal package skeleton — functionality is added incrementally.
+See [API.md](API.md) for the full function reference.
 
 ## Install
 
@@ -31,14 +31,16 @@ pip install -e ".[dev,notebook]"
 
 - Core: `rdkit`, `py3dmol` (lightweight in-notebook 3D viewer), `tqdm`,
   `requests`, `chembl_structure_pipeline` (ChEMBL's own structure
-  standardization/desalting library)
+  standardization/desalting library), `biopython` (structural alignment),
+  `numpy`
 - `[notebook]` extra: `jupyter`, `jupyterlab`, `notebook`, `ipykernel`,
   `ipywidgets`, `nglview` (fuller-featured 3D/trajectory viewer — installed
   via conda-forge in `environment.yml` for reliable widget asset setup),
   `pandas`
 - `[dev]` extra: `pytest`
-- AmberTools (`tleap`, `sander`, `antechamber`, `cpptraj`, ...): conda-forge
-  only, see `environment.yml` — no PyPI package exists
+- AmberTools (`tleap`, `sander`, `antechamber`, `cpptraj`, ...) and `fpocket`
+  (pocket detection, used by `chem.protein.find_pocket`): conda-forge only,
+  see `environment.yml` — no PyPI package exists for either
 
 ## chem.chembl — ChEMBL bioactivity download
 
@@ -60,7 +62,9 @@ When `normalize_smiles=True`, compounds are standardized/desalted via the
 and duplicate compounds (same resulting smiles) are collapsed into one row
 with `n`/`pchembl_mean`/`pchembl_median`/`pchembl_std` plus a
 `parent_chembl_id` pointing at one representative `molecule_chembl_id`; when
-`False`, one row is written per raw activity record instead.
+`False`, one row is written per raw activity record instead. If `output`
+already exists, it is left as-is and not re-downloaded (as with
+`chem.rcsb`/`chem.alphafold`).
 
 ### Progress and call logging
 
@@ -113,6 +117,50 @@ When `plddt_thres` is set, only entries whose average pLDDT confidence
 entry is downloaded regardless of confidence. As with `chem.rcsb`, a file already
 present in `outdir` is left as-is and not re-downloaded.
 
+## chem.protein — structural alignment and pocket detection
+
+```python
+from chem import protein
+
+# Sequence-align and structurally superpose a set of same-target structures
+# (mix PDB/CIF, RCSB/AlphaFold freely). Writes one PDB file per input into outdir.
+rmsd = protein.align(
+    ["data/1PPB.cif", "data/1BTH.cif", "af_data/AF-P00734-F1.pdb"],
+    reference=None,  # index into the list, or a path; defaults to the first entry
+    chain=None,  # override auto chain selection (see below)
+    outdir="aligned",
+)
+
+# Run fpocket on a structure and identify the pocket nearest a ligand.
+pocket = protein.find_pocket(
+    "aligned/1PPB.pdb",
+    ligand=None,  # None = auto-detect from HETATM; or a HET code; or an external file
+    outdir="pocket_out",  # keep fpocket's raw output; omit to use a discarded temp dir
+)
+```
+
+`align` selects each structure's primary polymer chain (the one with the most
+standard amino acid residues -- e.g. thrombin's catalytic heavy chain rather than
+its short light chain; pass `chain="A"` etc. to override), sequence-aligns it
+against the reference chain, and superposes the whole structure (Kabsch fit on the
+sequence-matched CA atoms, applied to every atom including ligands and waters) onto
+the reference's frame. Every input, including the reference, is written out as a
+PDB file in `outdir` so each can be loaded and overlaid individually (e.g. one
+py3Dmol `addModel` call per file). Returns `{path: rmsd}`; a structure with too few
+residues in common with the reference is skipped with a warning rather than raising.
+
+`find_pocket` runs [fpocket](https://github.com/Discngine/fpocket) on a PDB file
+(fpocket requires legacy PDB format, which is what `align` always writes) and picks
+the fpocket pocket whose lining atoms are closest to a ligand's 3D coordinates. The
+ligand can be auto-detected (the largest non-solvent/ion HETATM group in the file,
+e.g. a co-crystallized inhibitor from an RCSB download), a 3-letter PDB HET code to
+disambiguate when several ligand-like groups are present, or a path to an external
+ligand file (`.pdb`/`.sdf`/`.mol`/`.mol2`, e.g. a docking pose) for structures that
+don't contain the ligand themselves. Returns a dict with `pocket_id`,
+`score`/`druggability_score`/`volume` convenience fields, the full raw fpocket score
+dict under `info`, and `residues` (`[{"chain", "resnum", "resname"}, ...]`) lining
+the selected pocket.
+
 ### A note on `conda activate` and plain `python`/`pip`
 
 If your shell auto-activates another conda env at startup (e.g. via
@@ -133,6 +181,7 @@ conda run -n chem python -c "import rdkit; print(rdkit.__version__)"
 - `src/chem/chembl/` — ChEMBL data access (`fetch.py`: `download_activities`, re-exported at package level)
 - `src/chem/rcsb/` — RCSB PDB structure download (`fetch.py`: `download_structures`, re-exported at package level)
 - `src/chem/alphafold/` — AlphaFold DB structure download (`fetch.py`: `download_structures`, re-exported at package level)
+- `src/chem/protein/` — structural tools (`structural_align.py`: `align`; `pocket.py`: `find_pocket`; both re-exported at package level)
 - `notebooks/` — example notebooks
 - `tests/` — pytest test suite
 
