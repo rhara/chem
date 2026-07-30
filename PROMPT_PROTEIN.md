@@ -1,10 +1,10 @@
-# chem.protein.align / chem.protein.find_pocket の再現プロンプト
+# chem.protein.align / chem.protein.find_pocket / chem.protein.list_pockets の再現プロンプト
 
-`chem`リポジトリの`chem`パッケージ内に、構造解析用のサブパッケージ`protein`(`chem.protein`)を追加し、複数構造のシーケンス・3Dアラインメント(`align`)と、リガンド近傍のfpocketポケット・構成残基特定(`find_pocket`)を実装するための指示。`chem.rcsb`・`chem.alphafold`でダウンロードした構造をそのまま入力にできることを想定する。
+`chem`リポジトリの`chem`パッケージ内に、構造解析用のサブパッケージ`protein`(`chem.protein`)を追加し、複数構造のシーケンス・3Dアラインメント(`align`)と、リガンド近傍のfpocketポケット・構成残基特定(`find_pocket`)、リガンドを持たない構造向けの全候補ポケット列挙(`list_pockets`)を実装するための指示。`chem.rcsb`・`chem.alphafold`でダウンロードした構造をそのまま入力にできることを想定する。
 
 ## パッケージ構成
 
-- `src/chem/protein/__init__.py`: `from .structural_align import align` / `from .pocket import find_pocket` として再エクスポート
+- `src/chem/protein/__init__.py`: `from .structural_align import align` / `from .pocket import find_pocket, list_pockets` として再エクスポート
 - `src/chem/protein/structural_align.py`: `align`の実装
 - `src/chem/protein/pocket.py`: `find_pocket`の実装
 
@@ -65,6 +65,25 @@ protein.find_pocket(structure, ligand=None, outdir=None)
 5. 採用したポケットの`pocket{N}_atm.pdb`から一意な`(chain, resnum, resname)`のリストを抽出する
 6. `{stem}_info.txt`をパースする。フォーマットは`Pocket N :`という見出し行の後に、タブ区切りの`項目名 : \t値`行が続き、空行でポケットが区切られる。数値に変換できるものは`float`にする
 
+## chem.protein.list_pockets
+
+```python
+from chem import protein
+protein.list_pockets(structure, outdir=None)
+```
+
+AlphaFold予測構造のようにリガンドが一切結合していない構造に対して、`find_pocket`(リガンド近傍の1つだけを選ぶ)の代わりに、fpocketが検出した**すべての**候補ポケットを一覧で返す。
+
+- `structure`: PDBファイルのパス(`find_pocket`と同様)
+- `outdir`: fpocketの生ログ出力を保持するディレクトリ。`None`なら一時ディレクトリを使い処理後に破棄する(`find_pocket`と同様)
+- 戻り値: `find_pocket`の戻り値と全く同じ形の辞書(`pocket_id`/`score`/`druggability_score`/`volume`/`residues`/`info`)のリスト。**`druggability_score`降順**でソートする(`druggability_score`が無い(`None`の)ポケットがもしあれば最後に回す)
+
+### アルゴリズム
+
+1. `find_pocket`と同じ`_run_fpocket`でfpocketを実行し、`{stem}_info.txt`を`_parse_info_txt`でパースする(リガンド解決は行わない)
+2. `pockets/pocket{N}_atm.pdb`をすべて(`_pocket_atm_paths`でid→パスの辞書として)走査し、各ポケットについて`find_pocket`と共通の`_pocket_result(pocket_id, atm_path, info)`ヘルパーで結果辞書を組み立てる(`find_pocket`もこのヘルパーを使うようリファクタリングする)
+3. `druggability_score`降順(`None`は最後)でソートして返す
+
 ### `SOLVENT_AND_IONS`(自動検出で除外するHETコード、非網羅的)
 
 ```
@@ -83,9 +102,9 @@ SO4, PO4, GOL, EDO, PEG, PG4, 1PE, P6G, MPD, FMT, ACT, DMS, TRS, BME, EPE, HEPES
 
 ## サンプルノートブック
 
-`notebooks/example_proteins.ipynb`の末尾に、`chem.rcsb`でダウンロードした複数のトロンビン構造をアラインし、py3Dmolで重ね書き表示するサンプルセルを追加する。fpocketのサンプルは別途、リガンド入り構造(例: トリプシン+ベンザミジン `3PTB`)で`find_pocket`を実行し、選ばれたポケットの残基をハイライト表示するセルを追加する。
+`notebooks/example_proteins.ipynb`の末尾に、`chem.rcsb`でダウンロードした複数のトロンビン構造をアラインし、py3Dmolで重ね書き表示するサンプルセルを追加する。fpocketのサンプルは別途、リガンド入り構造(例: トリプシン+ベンザミジン `3PTB`)で`find_pocket`を実行し、選ばれたポケットの残基をハイライト表示するセルを追加する。`list_pockets`のサンプルは、AlphaFold予測構造セクション(リガンドが存在しない)に、`pandas.DataFrame`で「pocket_id / score / druggability_score / volume / n_residues」の表として全候補ポケットを表示するセルを追加する。
 
 ## 注意
 
 - このリポジトリはdd_*プロジェクト群、`~/lab/chembl`、`dd_chembl`とは無関係な独立プロジェクト。それらのコードやロジックを参照・流用しない
-- テストは`tests/test_protein_align.py`・`tests/test_protein_pocket.py`にネットワーク・外部バイナリ(fpocket)不要な範囲(シーケンスマッチングロジック、リガンド自動検出・HETコード判定・ファイル判定の分岐、ポケット選択の距離計算、`_info.txt`パーサ、fpocket未インストール時のエラーメッセージ)のみ追加する。実際のBio.PDB構造アラインメントとfpocket実行は、簡易的な合成PDBテキスト(固定カラム位置で手書きしたATOM/HETATMレコード)を使ったオフラインテストと、実データでの手動実行確認(3PTB+BENでPocket 1が選ばれ、Asp189・Ser195が残基リストに含まれることを確認済み)の組み合わせで検証する
+- テストは`tests/test_protein_align.py`・`tests/test_protein_pocket.py`にネットワーク・外部バイナリ(fpocket)不要な範囲(シーケンスマッチングロジック、リガンド自動検出・HETコード判定・ファイル判定の分岐、ポケット選択の距離計算、`_info.txt`パーサ、fpocket未インストール時のエラーメッセージ、`_pocket_atm_paths`/`_pocket_result`の単体動作、`list_pockets`を`_run_fpocket`を`monkeypatch`で偽の出力ディレクトリに差し替えて実行し全ポケットが`druggability_score`降順(値なしは最後)で返ること)のみ追加する。実際のBio.PDB構造アラインメントとfpocket実行は、簡易的な合成PDBテキスト(固定カラム位置で手書きしたATOM/HETATMレコード)を使ったオフラインテストと、実データでの手動実行確認(3PTB+BENでPocket 1が選ばれAsp189・Ser195が残基リストに含まれること、AlphaFold予測構造(リガンド無し)で`list_pockets`が複数候補を返すこと、を確認済み)の組み合わせで検証する

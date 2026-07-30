@@ -151,6 +151,10 @@ pocket = protein.find_pocket(
     ligand=None,  # None = auto-detect from HETATM; or a HET code; or an external file
     outdir="pocket_out",  # keep fpocket's raw output; omit to use a discarded temp dir
 )
+
+# Or, for a structure with no bound ligand at all (e.g. an AlphaFold
+# prediction), list every candidate pocket fpocket finds instead.
+pockets = protein.list_pockets("af_data/AF-P00734-F1.pdb")
 ```
 
 `align` selects each structure's primary polymer chain (the one with the most
@@ -179,6 +183,11 @@ don't contain the ligand themselves. Returns a dict with `pocket_id`,
 `score`/`druggability_score`/`volume` convenience fields, the full raw fpocket score
 dict under `info`, and `residues` (`[{"chain", "resnum", "resname"}, ...]`) lining
 the selected pocket.
+
+`list_pockets` runs the same fpocket analysis but, instead of picking the one
+pocket nearest a ligand, returns every pocket fpocket detected -- for structures
+with no bound ligand to anchor on. Each entry is shaped exactly like a single
+`find_pocket` result, sorted by `druggability_score` descending.
 
 ## chem.ligand — extract a ligand and score its drug-likeness
 

@@ -126,14 +126,22 @@ def _run_fpocket(structure, workdir):
     return os.path.join(workdir, f"{stem}_out"), stem
 
 
+def _pocket_atm_paths(pockets_dir):
+    """{pocket_id: path to pocketN_atm.pdb}, for every pocket fpocket detected."""
+    paths = {}
+    for atm_path in sorted(glob.glob(os.path.join(pockets_dir, "pocket*_atm.pdb"))):
+        pocket_id = int(re.search(r"pocket(\d+)_atm\.pdb$", atm_path).group(1))
+        paths[pocket_id] = atm_path
+    return paths
+
+
 def _pick_best_pocket(pockets_dir, ligand_atoms):
     """The fpocket pocket whose lining atoms have the smallest minimum distance to
     ligand_atoms. Returns (pocket_id, path to its pocketN_atm.pdb).
     """
     parser = PDBParser(QUIET=True)
     best_id, best_path, best_dist = None, None, None
-    for atm_path in sorted(glob.glob(os.path.join(pockets_dir, "pocket*_atm.pdb"))):
-        pocket_id = int(re.search(r"pocket(\d+)_atm\.pdb$", atm_path).group(1))
+    for pocket_id, atm_path in _pocket_atm_paths(pockets_dir).items():
         structure = parser.get_structure("pocket", atm_path)
         atoms = np.array([a.coord for a in structure.get_atoms()])
         dist = np.linalg.norm(atoms[:, None, :] - ligand_atoms[None, :, :], axis=-1).min()
@@ -192,6 +200,17 @@ def _parse_info_txt(path):
     return pockets
 
 
+def _pocket_result(pocket_id, atm_path, info):
+    return {
+        "pocket_id": pocket_id,
+        "score": info.get("Score"),
+        "druggability_score": info.get("Druggability Score"),
+        "volume": info.get("Volume"),
+        "residues": _parse_pocket_residues(atm_path),
+        "info": info,
+    }
+
+
 @logged
 def find_pocket(structure, ligand=None, outdir=None):
     """Identify the fpocket pocket nearest a ligand, and its lining residues.
@@ -239,24 +258,61 @@ def find_pocket(structure, ligand=None, outdir=None):
         ligand_atoms, ligand_label = _resolve_ligand_atoms(structure, ligand)
 
         pocket_id, atm_path = _pick_best_pocket(os.path.join(out_dir, "pockets"), ligand_atoms)
-        residues = _parse_pocket_residues(atm_path)
         info = _parse_info_txt(os.path.join(out_dir, f"{stem}_info.txt"))[pocket_id]
+        result = _pocket_result(pocket_id, atm_path, info)
 
         if not is_quiet():
             print(
                 f"selected pocket {pocket_id} (score={info.get('Score')}) near ligand "
-                f"{ligand_label}: {len(residues)} residues",
+                f"{ligand_label}: {len(result['residues'])} residues",
                 file=sys.stderr,
             )
 
-        return {
-            "pocket_id": pocket_id,
-            "score": info.get("Score"),
-            "druggability_score": info.get("Druggability Score"),
-            "volume": info.get("Volume"),
-            "residues": residues,
-            "info": info,
-        }
+        return result
+    finally:
+        if cleanup is not None:
+            cleanup.cleanup()
+
+
+@logged
+def list_pockets(structure, outdir=None):
+    """Run fpocket on `structure` and return every pocket it detects -- no
+    reference ligand needed, unlike `find_pocket`. Useful for blind pocket
+    detection on structures with no bound ligand at all, e.g. an AlphaFold
+    prediction, to see every candidate binding site rather than just the one
+    nearest a known ligand.
+
+    structure: path to a PDB file.
+    outdir: optional directory to keep fpocket's full raw output (pockets/,
+        *_info.txt, ...) in; if None, a temporary directory is used and discarded.
+
+    Returns a list of dicts, one per detected pocket, each shaped exactly like
+    a single `find_pocket` result (pocket_id, score, druggability_score,
+    volume, residues, info), sorted by druggability_score descending (pockets
+    fpocket didn't assign one to, if any, sort last).
+    """
+    cleanup = None
+    if outdir is not None:
+        os.makedirs(outdir, exist_ok=True)
+        workdir = outdir
+    else:
+        cleanup = tempfile.TemporaryDirectory()
+        workdir = cleanup.name
+
+    try:
+        out_dir, stem = _run_fpocket(structure, workdir)
+        info_by_id = _parse_info_txt(os.path.join(out_dir, f"{stem}_info.txt"))
+
+        results = [
+            _pocket_result(pocket_id, atm_path, info_by_id[pocket_id])
+            for pocket_id, atm_path in _pocket_atm_paths(os.path.join(out_dir, "pockets")).items()
+        ]
+        results.sort(key=lambda r: (r["druggability_score"] is None, -(r["druggability_score"] or 0)))
+
+        if not is_quiet():
+            print(f"found {len(results)} pocket(s)", file=sys.stderr)
+
+        return results
     finally:
         if cleanup is not None:
             cleanup.cleanup()

@@ -140,6 +140,65 @@ Pocket 2 :
     assert pockets[2]["Volume"] == 407.329
 
 
+def test_pocket_atm_paths_maps_id_to_path(tmp_path):
+    pockets_dir = tmp_path / "pockets"
+    pockets_dir.mkdir()
+    _write_pdb(pockets_dir / "pocket1_atm.pdb", [_atom_line(1, "CA", "ALA", "A", 1, 0.0, 0.0, 0.0)])
+    _write_pdb(pockets_dir / "pocket12_atm.pdb", [_atom_line(1, "CA", "ALA", "A", 1, 0.0, 0.0, 0.0)])
+    paths = pk._pocket_atm_paths(str(pockets_dir))
+    assert set(paths) == {1, 12}
+    assert paths[1].endswith("pocket1_atm.pdb")
+    assert paths[12].endswith("pocket12_atm.pdb")
+
+
+def test_pocket_result_shape(tmp_path):
+    path = tmp_path / "pocket1_atm.pdb"
+    _write_pdb(path, [_atom_line(1, "CA", "ALA", "A", 1, 0.0, 0.0, 0.0)])
+    info = {"Score": 0.5, "Druggability Score": 0.6, "Volume": 200.0}
+    result = pk._pocket_result(1, str(path), info)
+    assert result == {
+        "pocket_id": 1,
+        "score": 0.5,
+        "druggability_score": 0.6,
+        "volume": 200.0,
+        "residues": [{"chain": "A", "resnum": 1, "icode": "", "resname": "ALA"}],
+        "info": info,
+    }
+
+
+@pytest.fixture
+def fpocket_output(tmp_path):
+    """A fake fpocket output directory (pockets/pocketN_atm.pdb + N_out/stem_info.txt)
+    with three pockets of differing (and one missing) druggability score."""
+    out_dir = tmp_path / "structure_out"
+    pockets_dir = out_dir / "pockets"
+    pockets_dir.mkdir(parents=True)
+    for pocket_id in (1, 2, 3):
+        _write_pdb(
+            pockets_dir / f"pocket{pocket_id}_atm.pdb",
+            [_atom_line(1, "CA", "ALA", "A", pocket_id, 0.0, 0.0, 0.0)],
+        )
+    (out_dir / "structure_info.txt").write_text(
+        "Pocket 1 :\n\tScore : \t0.1\n\tDruggability Score : \t0.2\n\tVolume : \t100.0\n\n"
+        "Pocket 2 :\n\tScore : \t0.3\n\tDruggability Score : \t0.9\n\tVolume : \t300.0\n\n"
+        # No Druggability Score line -- fpocket sometimes omits it.
+        "Pocket 3 :\n\tScore : \t0.05\n\tVolume : \t50.0\n"
+    )
+    return str(out_dir)
+
+
+def test_list_pockets_returns_every_pocket_sorted_by_druggability(tmp_path, fpocket_output, monkeypatch):
+    monkeypatch.setattr(pk, "_run_fpocket", lambda structure, workdir: (fpocket_output, "structure"))
+    dummy = tmp_path / "structure.pdb"
+    dummy.write_text("")
+
+    results = pk.list_pockets(str(dummy))
+
+    assert [r["pocket_id"] for r in results] == [2, 1, 3]
+    assert results[0]["druggability_score"] == 0.9
+    assert results[-1]["druggability_score"] is None
+
+
 def test_run_fpocket_missing_binary_raises_helpful_error(tmp_path, monkeypatch):
     monkeypatch.setattr(pk.shutil, "which", lambda *_: None)
 

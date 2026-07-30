@@ -162,6 +162,21 @@ the ligand's atoms is selected. Returns a dict:
 - `info` — the full raw fpocket score dict for the selected pocket (all
   fields from `*_info.txt`, values converted to `float` where possible).
 
+### `protein.list_pockets(structure, outdir=None)`
+
+Run fpocket on a PDB file and return every pocket it detects — no reference
+ligand needed, unlike `find_pocket`. Useful for blind pocket detection on
+structures with no bound ligand at all, e.g. an AlphaFold prediction, to see
+every candidate binding site rather than just the one nearest a known ligand.
+
+- `structure` — path to a PDB file.
+- `outdir` — same as `find_pocket`'s.
+
+Returns a list of dicts, one per detected pocket, each shaped exactly like a
+single `find_pocket` result (`pocket_id`/`score`/`druggability_score`/
+`volume`/`residues`/`info`), sorted by `druggability_score` descending
+(pockets fpocket didn't assign one to, if any, sort last).
+
 ### `protein.SOLVENT_AND_IONS`
 
 A `frozenset` of common crystallization solvent/ion/additive HET codes (not
