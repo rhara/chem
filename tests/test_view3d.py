@@ -172,7 +172,7 @@ def test_template_mol_none_when_lookup_fails(monkeypatch):
         _template_mol.cache_clear()
 
 
-def test_ligand_molblock_kekulizes_aromatic_ring(monkeypatch):
+def test_ligand_molblock_writes_unkekulized_aromatic_bonds(monkeypatch):
     pdb_text = "\n".join(_benzene_ring_lines())
     monkeypatch.setattr("chem.view3d.render._template_mol", lambda resname: _benzene_template())
 
@@ -181,7 +181,7 @@ def test_ligand_molblock_kekulizes_aromatic_ring(monkeypatch):
     assert molblock is not None
     bond_lines = molblock.splitlines()[10:16]  # counts line, then 6 atom lines, then 6 bond lines
     bond_orders = {int(line.split()[2]) for line in bond_lines}
-    assert bond_orders == {1, 2}  # alternating single/double, not all-single
+    assert bond_orders == {4}  # MDL "aromatic" bond type, not a kekulized 1/2 split
 
 
 def test_ligand_molblock_none_when_template_lookup_fails(monkeypatch):
@@ -286,8 +286,18 @@ def test_build_view_adds_a_bond_order_model_when_template_matches(monkeypatch):
     view = _build_view(pdb_text, ligand_resnames, 600, 500, "spectrum", (50, 90))
     assert 'addModel("FAKE MOLBLOCK","mol")' in view.startjs
     assert '"colorscheme": "magentaCarbon"' in view.startjs
+    assert '"aromaticStyle": "circle"' in view.startjs
     assert '"model": -1' in view.startjs
     assert '"resn": "LIG"' not in view.startjs  # no distance-only fallback selector
+
+
+def test_build_view_loads_a_3dmoljs_build_with_aromaticstyle_support():
+    # py3Dmol defaults to 3Dmol.js 2.5.4, which silently renders MDL bond
+    # type 4 ("aromatic") as a plain single bond -- aromaticStyle needs 2.5.5+.
+    pdb_text = _atom_line(1, "CA", "ALA", "A", 1, 0.0, 0.0, 0.0)
+    view = _build_view(pdb_text, [], 600, 500, "spectrum", (50, 90))
+    assert "3dmol@2.5.4" not in view.startjs
+    assert "3dmol@2.5.5" in view.startjs
 
 
 def test_build_view_no_ligand_style_when_only_solvent():

@@ -15,6 +15,13 @@ _RESOLUTION_RE = re.compile(r"^REMARK\s+2\s+RESOLUTION\.\s+([\d.]+)\s+ANGSTROMS\
 
 RCSB_CHEMCOMP_API = "https://data.rcsb.org/rest/v1/core/chemcomp"
 
+# py3Dmol pins 3Dmol.js 2.5.4 by default, which has no special rendering for
+# MDL bond type 4 ("aromatic") -- it silently draws it as a plain single
+# bond. 2.5.5 added `aromaticStyle` (single bond + inscribed ring torus, or
+# a dashed second line), so aromatic rings need this newer build to actually
+# look aromatic.
+_3DMOL_JS_URL = "https://cdn.jsdelivr.net/npm/3dmol@2.5.5/build/3Dmol-min.js"
+
 COLORINGS = ("spectrum", "bfactor")
 
 
@@ -80,13 +87,19 @@ def _template_mol(resname):
 
 
 def _ligand_molblock(pdb_text, resname, chain, resnum, icode):
-    """A MolBlock for one ligand instance with bond orders (and therefore
-    aromatic rings) assigned by matching its distance-perceived connectivity
-    against the RCSB Chemical Component Dictionary's reference structure for
-    its HET code, or None if that lookup or the match fails -- ligand atom
-    positions from the PDB file are otherwise bond-order-blind (no CONECT
-    bond-order records), so distance alone can't tell a ring's double bonds
-    from its single ones.
+    """A MolBlock for one ligand instance with bond orders assigned by
+    matching its distance-perceived connectivity against the RCSB Chemical
+    Component Dictionary's reference structure for its HET code, or None if
+    that lookup or the match fails -- ligand atom positions from the PDB file
+    are otherwise bond-order-blind (no CONECT bond-order records), so
+    distance alone can't tell a ring's double bonds from its single ones.
+
+    Aromatic rings are written unkekulized (MDL bond type 4, "aromatic")
+    rather than as one arbitrarily-chosen single/double resonance form --
+    3Dmol.js (2.5.5+) renders bond type 4 as a single bond plus an inscribed
+    ring torus (`view3d._build_view`'s `aromaticStyle: "circle"`), the usual
+    textbook depiction of a delocalized ring, instead of a kekulized
+    depiction of one particular resonance structure.
     """
     template = _template_mol(resname)
     if template is None:
@@ -99,7 +112,7 @@ def _ligand_molblock(pdb_text, resname, chain, resnum, icode):
         assigned = AllChem.AssignBondOrdersFromTemplate(template, mol)
     except Exception:
         return None
-    return Chem.MolToMolBlock(assigned, kekulize=True)
+    return Chem.MolToMolBlock(assigned, kekulize=False)
 
 
 def _chain_ids(pdb_text):
@@ -137,7 +150,7 @@ def _caption_lines(path, pdb_text, ligand_resnames):
 
 
 def _build_view(pdb_text, ligand_resnames, width, height, coloring, bfactor_range):
-    view = py3Dmol.view(width=width, height=height)
+    view = py3Dmol.view(width=width, height=height, js=_3DMOL_JS_URL)
     view.addModel(pdb_text, "pdb")
     if coloring == "bfactor":
         bmin, bmax = bfactor_range
@@ -152,14 +165,17 @@ def _build_view(pdb_text, ligand_resnames, width, height, coloring, bfactor_rang
     # magenta (bold and high-contrast against the cartoon's roygb spectrum,
     # unlike yellowCarbon, which blends into it) while leaving every other
     # element (O, N, S, halogens, ...) at its normal CPK color, so heteroatoms
-    # read the same way they do in any other molecular viewer.
-    ligand_style = {"stick": {"colorscheme": "magentaCarbon"}}
+    # read the same way they do in any other molecular viewer. "circle" draws
+    # aromatic (bond order 4) rings as a plain bond plus an inscribed torus --
+    # the usual textbook symbol for a delocalized ring -- instead of guessing
+    # at a single/double kekulized resonance form.
+    ligand_style = {"stick": {"colorscheme": "magentaCarbon", "aromaticStyle": "circle"}}
     for resname, chain, resnum, icode in _ligand_instances(pdb_text, ligand_resnames):
         molblock = _ligand_molblock(pdb_text, resname, chain, resnum, icode)
         if molblock is not None:
             # A separate small-molecule model with real bond orders, so
-            # aromatic rings render as the familiar alternating double bonds
-            # instead of a plain single-bonded stick skeleton.
+            # aromatic rings render as such instead of a plain single-bonded
+            # stick skeleton.
             view.addModel(molblock, "mol")
             view.setStyle({"model": -1}, ligand_style)
         else:
@@ -189,12 +205,16 @@ def render_protein(
     ids, ligand HET codes, and experimental resolution if present. Ligand
     carbons are colored magenta for contrast against the cartoon; every other
     element (O, N, S, halogens, ...) keeps its normal CPK color. Each
-    ligand's bond orders -- including aromatic rings, drawn as the familiar
-    alternating double bonds -- are looked up from the RCSB Chemical
-    Component Dictionary by HET code (one web request per distinct code, the
-    PDB file's own HETATM records carry no bond-order information); a ligand
-    whose code isn't found there (or with no network access) falls back to
-    plain single-bonded sticks.
+    ligand's bond orders are looked up from the RCSB Chemical Component
+    Dictionary by HET code (one web request per distinct code, the PDB
+    file's own HETATM records carry no bond-order information) and matched
+    onto its 3D coordinates; aromatic rings render unkekulized, as a plain
+    bond plus an inscribed ring torus (the usual textbook symbol for a
+    delocalized ring) rather than one arbitrarily-chosen single/double
+    resonance form. A ligand whose code isn't found there, whose atom count
+    doesn't match the Dictionary's reference structure (e.g. a partially
+    resolved ligand missing some atoms), or with no network access, falls
+    back to plain single-bonded sticks.
 
     path: path to a PDB file.
     exclude: HET codes to leave off the ligand sticks. Defaults to
