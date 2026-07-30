@@ -176,6 +176,23 @@ def _parse_pocket_residues(atm_path):
     return residues
 
 
+def _parse_pocket_spheres(pqr_path):
+    """Alpha-sphere centers/radii from fpocket's pocketN_vert.pqr file -- the
+    Voronoi vertices approximating the pocket cavity's shape/volume, as opposed
+    to _parse_pocket_residues' lining protein atoms. Each is
+    {"x", "y", "z", "radius"} (Angstroms, same frame as the input structure).
+    """
+    spheres = []
+    with open(pqr_path) as f:
+        for line in f:
+            if not line.startswith("ATOM"):
+                continue
+            parts = line.split()
+            x, y, z, radius = float(parts[5]), float(parts[6]), float(parts[7]), float(parts[-1])
+            spheres.append({"x": x, "y": y, "z": z, "radius": radius})
+    return spheres
+
+
 def _parse_info_txt(path):
     """Parse fpocket's {stem}_info.txt into {pocket_id: {field_name: value}}."""
     pockets = {}
@@ -201,12 +218,16 @@ def _parse_info_txt(path):
 
 
 def _pocket_result(pocket_id, atm_path, info):
+    # fpocket always writes each pocket's alpha-sphere vertices as a sibling
+    # file next to its lining-atom file, same directory, same pocket number.
+    vert_path = atm_path[: -len("_atm.pdb")] + "_vert.pqr"
     return {
         "pocket_id": pocket_id,
         "score": info.get("Score"),
         "druggability_score": info.get("Druggability Score"),
         "volume": info.get("Volume"),
         "residues": _parse_pocket_residues(atm_path),
+        "spheres": _parse_pocket_spheres(vert_path) if os.path.exists(vert_path) else [],
         "info": info,
     }
 
@@ -243,6 +264,11 @@ def find_pocket(structure, ligand=None, outdir=None):
             fpocket's info file for the selected pocket
         residues: list of {"chain", "resnum", "icode", "resname"} lining the pocket
             (icode is "" when the residue has no PDB insertion code)
+        spheres: list of {"x", "y", "z", "radius"} -- fpocket's alpha spheres
+            approximating the pocket cavity's shape/volume (as opposed to
+            `residues`' lining protein atoms), same frame as `structure`.
+            Handy for a "filled space" view, e.g. one py3Dmol addSphere per
+            entry, rather than sticks on the lining residues.
         info: the full raw fpocket score dict for the selected pocket
     """
     cleanup = None
@@ -288,8 +314,8 @@ def list_pockets(structure, outdir=None):
 
     Returns a list of dicts, one per detected pocket, each shaped exactly like
     a single `find_pocket` result (pocket_id, score, druggability_score,
-    volume, residues, info), sorted by druggability_score descending (pockets
-    fpocket didn't assign one to, if any, sort last).
+    volume, residues, spheres, info), sorted by druggability_score descending
+    (pockets fpocket didn't assign one to, if any, sort last).
     """
     cleanup = None
     if outdir is not None:

@@ -159,6 +159,11 @@ the ligand's atoms is selected. Returns a dict:
   trypsin, thrombin, factor Xa) commonly have insertion-code residues like
   `60A`/`60B` sharing a resnum with plain residue `60`, so `icode` is kept
   distinct from `resnum` rather than folded into it.
+- `spheres` — list of `{"x", "y", "z", "radius"}`: fpocket's alpha spheres
+  approximating the pocket cavity's shape/volume (as opposed to `residues`'
+  lining protein atoms), in the same frame as `structure`. Handy for a
+  "filled space" view, e.g. one py3Dmol `addSphere` per entry, rather than
+  sticks on the lining residues.
 - `info` — the full raw fpocket score dict for the selected pocket (all
   fields from `*_info.txt`, values converted to `float` where possible).
 
@@ -174,8 +179,8 @@ every candidate binding site rather than just the one nearest a known ligand.
 
 Returns a list of dicts, one per detected pocket, each shaped exactly like a
 single `find_pocket` result (`pocket_id`/`score`/`druggability_score`/
-`volume`/`residues`/`info`), sorted by `druggability_score` descending
-(pockets fpocket didn't assign one to, if any, sort last).
+`volume`/`residues`/`spheres`/`info`), sorted by `druggability_score`
+descending (pockets fpocket didn't assign one to, if any, sort last).
 
 ### `protein.SOLVENT_AND_IONS`
 

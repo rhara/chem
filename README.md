@@ -181,8 +181,11 @@ disambiguate when several ligand-like groups are present, or a path to an extern
 ligand file (`.pdb`/`.sdf`/`.mol`/`.mol2`, e.g. a docking pose) for structures that
 don't contain the ligand themselves. Returns a dict with `pocket_id`,
 `score`/`druggability_score`/`volume` convenience fields, the full raw fpocket score
-dict under `info`, and `residues` (`[{"chain", "resnum", "resname"}, ...]`) lining
-the selected pocket.
+dict under `info`, `residues` (`[{"chain", "resnum", "resname"}, ...]`) lining
+the selected pocket, and `spheres` (`[{"x", "y", "z", "radius"}, ...]`) -- fpocket's
+own alpha spheres approximating the pocket cavity's shape, handy for rendering the
+pocket as a filled volume (e.g. one py3Dmol `addSphere` per entry) instead of sticks
+on the lining residues.
 
 `list_pockets` runs the same fpocket analysis but, instead of picking the one
 pocket nearest a ligand, returns every pocket fpocket detected -- for structures

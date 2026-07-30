@@ -54,15 +54,16 @@ protein.find_pocket(structure, ligand=None, outdir=None)
   - `pocket_id`: fpocketのポケット番号
   - `score` / `druggability_score` / `volume`: `_info.txt`から取り出した簡易フィールド
   - `residues`: `[{"chain":..., "resnum":..., "resname":...}, ...]`(該当ポケットを構成する残基、出現順、重複なし)
+  - `spheres`: `[{"x":..., "y":..., "z":..., "radius":...}, ...]`(fpocketが空洞の形状を近似するために生成したアルファ球の中心座標・半径。`residues`が「ポケットを構成する蛋白質原子」であるのに対しこちらは「空洞そのものの形状」。py3Dmolの`addSphere`を球ごとに1回呼べば、リガンド近傍を構成残基のstickではなく充填された体積として表示できる)
   - `info`: 該当ポケットのfpocketスコア情報全体(`_info.txt`の全フィールドを`{項目名: 値}`の辞書にしたもの)
 
 ### アルゴリズム
 
 1. `structure`を作業ディレクトリ(`outdir`があればそこ、なければ一時ディレクトリ)にコピーし、`fpocket -f {basename}`をサブプロセスとして実行する(`cwd`を作業ディレクトリにすることで、元ファイルの場所を汚さない)。`fpocket`実行ファイルが見つからない場合はconda-forgeでのインストール方法を含む分かりやすい`RuntimeError`にする
-2. `{stem}_out/pockets/pocket{N}_atm.pdb`(各ポケットを構成する蛋白質原子)と`{stem}_out/{stem}_info.txt`(ポケットごとのスコア情報)がfpocketの出力として得られる
+2. `{stem}_out/pockets/pocket{N}_atm.pdb`(各ポケットを構成する蛋白質原子)、同ディレクトリの`pocket{N}_vert.pqr`(fpocketが空洞形状を近似するために生成したアルファ球群。PQR形式で1行1球、列は`serial, atom名, resname("STP"), resseq, x, y, z, charge, radius`)、`{stem}_out/{stem}_info.txt`(ポケットごとのスコア情報)がfpocketの出力として得られる
 3. `ligand`引数からリガンド原子の3D座標(numpy配列)を解決する(上記参照)
 4. 各`pocket{N}_atm.pdb`をBio.PDBでパースし、その原子群とリガンド原子群との最小距離(全原子対distanceのmin)を計算する。最小距離が最も小さいポケット番号を採用する(3PTB(トリプシン)+BENリガンドで検証済み: 最もfpocketスコアが高いPocket 1が同時に最もBENに近く、既知の活性部位Asp189・Ser195を含むことを確認)
-5. 採用したポケットの`pocket{N}_atm.pdb`から一意な`(chain, resnum, resname)`のリストを抽出する
+5. 採用したポケットについて、`_pocket_result(pocket_id, atm_path, info)`ヘルパーで結果辞書を組み立てる: `pocket{N}_atm.pdb`から一意な`(chain, resnum, resname)`のリスト(`residues`)を抽出し、`atm_path`と同じディレクトリの`pocket{N}_vert.pqr`(`_atm.pdb`→`_vert.pqr`と文字列置換したパス)を`_parse_pocket_spheres`でパースして`spheres`とする(ファイルが存在しなければ空リスト)
 6. `{stem}_info.txt`をパースする。フォーマットは`Pocket N :`という見出し行の後に、タブ区切りの`項目名 : \t値`行が続き、空行でポケットが区切られる。数値に変換できるものは`float`にする
 
 ## chem.protein.list_pockets
@@ -76,7 +77,7 @@ AlphaFold予測構造のようにリガンドが一切結合していない構�
 
 - `structure`: PDBファイルのパス(`find_pocket`と同様)
 - `outdir`: fpocketの生ログ出力を保持するディレクトリ。`None`なら一時ディレクトリを使い処理後に破棄する(`find_pocket`と同様)
-- 戻り値: `find_pocket`の戻り値と全く同じ形の辞書(`pocket_id`/`score`/`druggability_score`/`volume`/`residues`/`info`)のリスト。**`druggability_score`降順**でソートする(`druggability_score`が無い(`None`の)ポケットがもしあれば最後に回す)
+- 戻り値: `find_pocket`の戻り値と全く同じ形の辞書(`pocket_id`/`score`/`druggability_score`/`volume`/`residues`/`spheres`/`info`)のリスト。**`druggability_score`降順**でソートする(`druggability_score`が無い(`None`の)ポケットがもしあれば最後に回す)
 
 ### アルゴリズム
 
@@ -102,9 +103,9 @@ SO4, PO4, GOL, EDO, PEG, PG4, 1PE, P6G, MPD, FMT, ACT, DMS, TRS, BME, EPE, HEPES
 
 ## サンプルノートブック
 
-`notebooks/example_proteins.ipynb`の末尾に、`chem.rcsb`でダウンロードした複数のトロンビン構造をアラインし、py3Dmolで重ね書き表示するサンプルセルを追加する。fpocketのサンプルは別途、リガンド入り構造(例: トリプシン+ベンザミジン `3PTB`)で`find_pocket`を実行し、選ばれたポケットの残基をハイライト表示するセルを追加する。`list_pockets`のサンプルは、AlphaFold予測構造セクション(リガンドが存在しない)に、`pandas.DataFrame`で「pocket_id / score / druggability_score / volume / n_residues」の表として全候補ポケットを表示するセルを追加する。
+`notebooks/example_proteins.ipynb`の末尾に、`chem.rcsb`でダウンロードした複数のトロンビン構造をアラインし、py3Dmolで重ね書き表示するサンプルセルを追加する。fpocketのサンプルは別途、リガンド入り構造(例: トリプシン+ベンザミジン `3PTB`)で`find_pocket`を実行し、選ばれたポケットの残基をハイライト表示するセルを追加する。`list_pockets`のサンプルは、AlphaFold予測構造セクション(リガンドが存在しない)に以下3セルを追加する: (1) `pandas.DataFrame`で「pocket_id / score / druggability_score / volume / n_residues」の表として全候補ポケットを表示、(2) `druggability_score >= 0.2`の候補ポケットを、半透明cartoonの上にポケットごとに異なる色の構成残基stickでハイライトして可視化(色とpocket_id/druggability_scoreの凡例付き)、(3) 同じ候補ポケットを、構成残基のstickの代わりに`spheres`フィールド(fpocketのアルファ球)を`py3Dmol.addSphere`で球ごとに描画し、空洞を充填された体積として可視化(こちらもポケットごとに色分け・凡例付き)。既存セルは書き換えず、新規セルとして追記する。
 
 ## 注意
 
 - このリポジトリはdd_*プロジェクト群、`~/lab/chembl`、`dd_chembl`とは無関係な独立プロジェクト。それらのコードやロジックを参照・流用しない
-- テストは`tests/test_protein_align.py`・`tests/test_protein_pocket.py`にネットワーク・外部バイナリ(fpocket)不要な範囲(シーケンスマッチングロジック、リガンド自動検出・HETコード判定・ファイル判定の分岐、ポケット選択の距離計算、`_info.txt`パーサ、fpocket未インストール時のエラーメッセージ、`_pocket_atm_paths`/`_pocket_result`の単体動作、`list_pockets`を`_run_fpocket`を`monkeypatch`で偽の出力ディレクトリに差し替えて実行し全ポケットが`druggability_score`降順(値なしは最後)で返ること)のみ追加する。実際のBio.PDB構造アラインメントとfpocket実行は、簡易的な合成PDBテキスト(固定カラム位置で手書きしたATOM/HETATMレコード)を使ったオフラインテストと、実データでの手動実行確認(3PTB+BENでPocket 1が選ばれAsp189・Ser195が残基リストに含まれること、AlphaFold予測構造(リガンド無し)で`list_pockets`が複数候補を返すこと、を確認済み)の組み合わせで検証する
+- テストは`tests/test_protein_align.py`・`tests/test_protein_pocket.py`にネットワーク・外部バイナリ(fpocket)不要な範囲(シーケンスマッチングロジック、リガンド自動検出・HETコード判定・ファイル判定の分岐、ポケット選択の距離計算、`_info.txt`パーサ、fpocket未インストール時のエラーメッセージ、`_pocket_atm_paths`/`_pocket_result`の単体動作(`pocket{N}_vert.pqr`が存在する/しない両方のケース)、`_parse_pocket_spheres`が合成PQRテキストから`x`/`y`/`z`/`radius`を正しく取り出すこと、`list_pockets`を`_run_fpocket`を`monkeypatch`で偽の出力ディレクトリに差し替えて実行し全ポケットが`druggability_score`降順(値なしは最後)で返ること)のみ追加する。実際のBio.PDB構造アラインメントとfpocket実行は、簡易的な合成PDBテキスト(固定カラム位置で手書きしたATOM/HETATMレコード)を使ったオフラインテストと、実データでの手動実行確認(3PTB+BENでPocket 1が選ばれAsp189・Ser195が残基リストに含まれること、AlphaFold予測構造(リガンド無し)で`list_pockets`が複数候補を返し、そのうち`druggability_score >= 0.2`の3件を`spheres`経由でHTMLに書き出しブラウザで表示確認したところ、cartoon上にポケットごとに色分けされた充填体積として描画されることを確認済み)の組み合わせで検証する

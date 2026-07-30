@@ -151,7 +151,7 @@ def test_pocket_atm_paths_maps_id_to_path(tmp_path):
     assert paths[12].endswith("pocket12_atm.pdb")
 
 
-def test_pocket_result_shape(tmp_path):
+def test_pocket_result_shape_no_vert_file(tmp_path):
     path = tmp_path / "pocket1_atm.pdb"
     _write_pdb(path, [_atom_line(1, "CA", "ALA", "A", 1, 0.0, 0.0, 0.0)])
     info = {"Score": 0.5, "Druggability Score": 0.6, "Volume": 200.0}
@@ -162,8 +162,41 @@ def test_pocket_result_shape(tmp_path):
         "druggability_score": 0.6,
         "volume": 200.0,
         "residues": [{"chain": "A", "resnum": 1, "icode": "", "resname": "ALA"}],
+        "spheres": [],
         "info": info,
     }
+
+
+def _write_pqr(path, spheres):
+    lines = [
+        f"ATOM  {i + 1:>5}    C STP     1    {s['x']:>8.3f}{s['y']:>8.3f}{s['z']:>8.3f}    0.00    {s['radius']:.2f}"
+        for i, s in enumerate(spheres)
+    ]
+    path.write_text("\n".join(lines) + "\nEND\n")
+
+
+def test_parse_pocket_spheres(tmp_path):
+    path = tmp_path / "pocket1_vert.pqr"
+    _write_pqr(
+        path,
+        [
+            {"x": 1.0, "y": 2.0, "z": 3.0, "radius": 3.5},
+            {"x": -1.5, "y": 0.0, "z": 4.25, "radius": 3.6},
+        ],
+    )
+    spheres = pk._parse_pocket_spheres(str(path))
+    assert spheres == [
+        {"x": 1.0, "y": 2.0, "z": 3.0, "radius": 3.5},
+        {"x": -1.5, "y": 0.0, "z": 4.25, "radius": 3.6},
+    ]
+
+
+def test_pocket_result_includes_spheres_from_sibling_vert_file(tmp_path):
+    atm_path = tmp_path / "pocket1_atm.pdb"
+    _write_pdb(atm_path, [_atom_line(1, "CA", "ALA", "A", 1, 0.0, 0.0, 0.0)])
+    _write_pqr(tmp_path / "pocket1_vert.pqr", [{"x": 1.0, "y": 2.0, "z": 3.0, "radius": 3.5}])
+    result = pk._pocket_result(1, str(atm_path), {"Score": 0.1})
+    assert result["spheres"] == [{"x": 1.0, "y": 2.0, "z": 3.0, "radius": 3.5}]
 
 
 @pytest.fixture
