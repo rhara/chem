@@ -231,14 +231,14 @@ Average molecular weight (g/mol) for an RDKit molecule. Thin wrapper around
 
 ## chem.view3d
 
-### `view3d.render_protein(path, exclude=SOLVENT_AND_IONS, width=600, height=500, coloring="spectrum", bfactor_range=(50, 90))`
+### `view3d.render_protein(path, exclude=SOLVENT_AND_IONS, width=600, height=500, coloring="spectrum", bfactor_range=(50, 90), style="cartoon")`
 
 Display a PDB structure file as an interactive py3Dmol view in a light-gray
-bordered frame, with a caption beside it on the right: a cartoon backbone
-colored per `coloring`, plus any HETATM ligand group not in `exclude` as
-magenta sticks (cartoon alone only draws the polymer backbone). The border
-marks exactly the area where 3Dmol.js's mouse controls (rotate/zoom/pan) take
-over.
+bordered frame, with a caption beside it on the right: the protein backbone
+-- as a cartoon or a solid volume per `style`, colored per `coloring` -- plus
+any HETATM ligand group not in `exclude` as magenta sticks (neither backbone
+style draws ligands on its own). The border marks exactly the area where
+3Dmol.js's mouse controls (rotate/zoom/pan) take over.
 
 - `path` — path to a PDB file.
 - `exclude` — HET codes to leave off the ligand sticks. Defaults to
@@ -253,6 +253,13 @@ over.
   ignored for `"spectrum"`. Defaults to AlphaFold's pLDDT confidence
   convention (`50, 90`); pass the structure's own B-factor range for
   crystallographic temperature factors.
+- `style` — `"cartoon"` (default): ribbon backbone; or `"surface"`: a solid
+  van der Waals volume (the union of a smooth blob at every backbone atom,
+  computed by 3Dmol.js via marching cubes over a grid of atomic radii, rather
+  than a ribbon or individual per-atom spheres), translucent (opacity 0.85)
+  so a ligand bound underneath still shows through. Restricted to
+  non-HETATM atoms either way, so the ligand keeps its own separate stick
+  rendering instead of being enveloped by the volume.
 
 The caption lists, one per line: the PDB id (`path`'s filename stem), the
 distinct chain ids found in `ATOM` records, the ligand HET codes shown as

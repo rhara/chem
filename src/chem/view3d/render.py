@@ -23,6 +23,7 @@ RCSB_CHEMCOMP_API = "https://data.rcsb.org/rest/v1/core/chemcomp"
 _3DMOL_JS_URL = "https://cdn.jsdelivr.net/npm/3dmol@2.5.5/build/3Dmol-min.js"
 
 COLORINGS = ("spectrum", "bfactor")
+STYLES = ("cartoon", "surface")
 
 
 def _ligand_resnames(pdb_text, exclude):
@@ -149,18 +150,28 @@ def _caption_lines(path, pdb_text, ligand_resnames):
     ]
 
 
-def _build_view(pdb_text, ligand_resnames, width, height, coloring, bfactor_range):
+def _build_view(pdb_text, ligand_resnames, width, height, coloring, bfactor_range, style="cartoon"):
     view = py3Dmol.view(width=width, height=height, js=_3DMOL_JS_URL)
     view.addModel(pdb_text, "pdb")
     if coloring == "bfactor":
         bmin, bmax = bfactor_range
         # e.g. AlphaFold stores per-residue pLDDT confidence in the B-factor column.
-        view.setStyle({"cartoon": {"colorscheme": {"prop": "b", "gradient": "roygb", "min": bmin, "max": bmax}}})
+        color_style = {"colorscheme": {"prop": "b", "gradient": "roygb", "min": bmin, "max": bmax}}
     else:
         # "spectrum" alone defaults to 3Dmol.js's sinebow gradient, whose N-terminal
         # end drifts into purple/magenta; colorscheme="roygb" keeps it to blue (N) ->
         # cyan -> green -> yellow -> orange -> red (C), matching the usual convention.
-        view.setStyle({"cartoon": {"color": "spectrum", "colorscheme": "roygb"}})
+        color_style = {"color": "spectrum", "colorscheme": "roygb"}
+    if style == "surface":
+        # A VDW (van der Waals) isosurface -- effectively the union of a Gaussian-ish
+        # blob at every atom's position, computed by 3Dmol.js via marching cubes over
+        # a grid built from atomic radii -- rather than individual per-atom spheres.
+        # Restricted to non-HETATM atoms so a bound ligand's own stick rendering
+        # (below) isn't swallowed by an opaque protein blob; opacity < 1 keeps it
+        # from fully hiding a ligand buried in a pocket either way.
+        view.addSurface("VDW", {**color_style, "opacity": 0.85}, {"hetflag": False})
+    else:
+        view.setStyle({"cartoon": color_style})
     # "magentaCarbon" -- one of 3Dmol.js's 8 "*Carbon" presets -- colors carbon
     # magenta (bold and high-contrast against the cartoon's roygb spectrum,
     # unlike yellowCarbon, which blends into it) while leaving every other
@@ -195,26 +206,28 @@ def render_protein(
     height=500,
     coloring="spectrum",
     bfactor_range=(50, 90),
+    style="cartoon",
 ):
     """Display a PDB structure file as an interactive py3Dmol view, followed by
     a caption.
 
-    Shows a cartoon backbone -- colored per `coloring` -- plus any HETATM
-    ligand group not in `exclude` as sticks (cartoon alone only draws the
-    polymer backbone), with a caption to its right listing the PDB id, chain
-    ids, ligand HET codes, and experimental resolution if present. Ligand
-    carbons are colored magenta for contrast against the cartoon; every other
-    element (O, N, S, halogens, ...) keeps its normal CPK color. Each
-    ligand's bond orders are looked up from the RCSB Chemical Component
-    Dictionary by HET code (one web request per distinct code, the PDB
-    file's own HETATM records carry no bond-order information) and matched
-    onto its 3D coordinates; aromatic rings render unkekulized, as a plain
-    bond plus an inscribed ring torus (the usual textbook symbol for a
-    delocalized ring) rather than one arbitrarily-chosen single/double
-    resonance form. A ligand whose code isn't found there, whose atom count
-    doesn't match the Dictionary's reference structure (e.g. a partially
-    resolved ligand missing some atoms), or with no network access, falls
-    back to plain single-bonded sticks.
+    Shows the protein backbone -- as a cartoon or a solid volume per `style`,
+    colored per `coloring` -- plus any HETATM ligand group not in `exclude` as
+    sticks (neither backbone style draws ligands on its own), with a caption
+    to its right listing the PDB id, chain ids, ligand HET codes, and
+    experimental resolution if present. Ligand carbons are colored magenta
+    for contrast against the backbone; every other element (O, N, S,
+    halogens, ...) keeps its normal CPK color. Each ligand's bond orders are
+    looked up from the RCSB Chemical Component Dictionary by HET code (one
+    web request per distinct code, the PDB file's own HETATM records carry no
+    bond-order information) and matched onto its 3D coordinates; aromatic
+    rings render unkekulized, as a plain bond plus an inscribed ring torus
+    (the usual textbook symbol for a delocalized ring) rather than one
+    arbitrarily-chosen single/double resonance form. A ligand whose code
+    isn't found there, whose atom count doesn't match the Dictionary's
+    reference structure (e.g. a partially resolved ligand missing some
+    atoms), or with no network access, falls back to plain single-bonded
+    sticks.
 
     path: path to a PDB file.
     exclude: HET codes to leave off the ligand sticks. Defaults to
@@ -230,6 +243,14 @@ def render_protein(
         for "spectrum". Defaults to AlphaFold's pLDDT confidence convention
         (50-90); pass the structure's own B-factor range for crystallographic
         temperature factors.
+    style: "cartoon" (default) -- ribbon backbone; or "surface" -- a solid
+        van der Waals volume (the union of a smooth blob at every backbone
+        atom, computed by 3Dmol.js via marching cubes over a grid of atomic
+        radii, rather than a ribbon or individual per-atom spheres),
+        translucent (opacity 0.85) so a ligand bound underneath still shows
+        through. Restricted to non-HETATM atoms either way, so the ligand
+        keeps its own separate stick rendering rather than being enveloped
+        by the volume.
 
     The view sits in a light-gray-bordered frame -- exactly the area where
     3Dmol.js's mouse controls (rotate/zoom/pan) take over, so the border
@@ -242,12 +263,14 @@ def render_protein(
     """
     if coloring not in COLORINGS:
         raise ValueError(f"coloring must be one of {COLORINGS}")
+    if style not in STYLES:
+        raise ValueError(f"style must be one of {STYLES}")
 
     with open(path) as f:
         pdb_text = f.read()
 
     ligand_resnames = _ligand_resnames(pdb_text, exclude)
-    view = _build_view(pdb_text, ligand_resnames, width, height, coloring, bfactor_range)
+    view = _build_view(pdb_text, ligand_resnames, width, height, coloring, bfactor_range, style)
 
     # A same-sized placeholder div, bordered up front so the frame is visible
     # immediately (3Dmol.js loads its viewer asynchronously from a CDN); once

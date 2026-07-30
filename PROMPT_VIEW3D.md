@@ -21,16 +21,17 @@ view3d.render_protein(pdb_filename)
 from chem import view3d
 view3d.render_protein(
     path, exclude=SOLVENT_AND_IONS, width=600, height=500,
-    coloring="spectrum", bfactor_range=(50, 90),
+    coloring="spectrum", bfactor_range=(50, 90), style="cartoon",
 )
 ```
 
 - `path`: PDBファイルへのパス
 - `exclude`: リガンドのstick表示から除外するHETコードの集合。デフォルトは`chem.protein.SOLVENT_AND_IONS`。呼び出し側で`SOLVENT_AND_IONS | {"NAG", "TYS"}`のように追加のコードを合わせて渡せば、構造固有の非リガンドHETATM(糖鎖修飾、修飾残基など)も除外できる
 - `width`/`height`: ビューアのピクセルサイズ
-- `coloring`: カートゥーンの配色方式。`"spectrum"`(デフォルト) -- 残基位置でN末端→C末端をレインボー表示。`"bfactor"` -- ファイルのB-factor列(例: AlphaFoldが格納するper-residue pLDDT信頼度)でレインボー表示
+- `coloring`: バックボーンの配色方式。`"spectrum"`(デフォルト) -- 残基位置でN末端→C末端をレインボー表示。`"bfactor"` -- ファイルのB-factor列(例: AlphaFoldが格納するper-residue pLDDT信頼度)でレインボー表示
 - `bfactor_range`: `coloring="bfactor"`のときのグラデーションの`(min, max)`(`"spectrum"`では無視)。デフォルトはAlphaFoldのpLDDT信頼度の慣習に合わせた`(50, 90)`。結晶構造の温度因子(B-factor)を使う場合は構造自体のB-factor範囲を渡す
-- `COLORINGS = ("spectrum", "bfactor")`をモジュールレベル定数として定義し、`coloring`がこれ以外の値なら`ValueError`
+- `style`: バックボーンの表示形式。`"cartoon"`(デフォルト) -- リボン表示。`"surface"` -- van der Waals表面(各原子位置に置いたなめらかな塊の和集合を3Dmol.jsがmarching cubesでグリッド上に計算したもの。個々の原子を球で描く表示とは異なる)による、半透明(opacity 0.85)のボリューム表示。リガンドが表面の下に隠れないよう半透明にし、かつリガンドのstick表示自体はvolumeに飲み込まれないよう非HETATM原子のみを対象にする
+- `COLORINGS = ("spectrum", "bfactor")`、`STYLES = ("cartoon", "surface")`をモジュールレベル定数として定義し、`coloring`/`style`がそれぞれの集合以外の値なら`ValueError`
 - 戻り値: なし(`None`)。ビュー+キャプションを表示する副作用のみを持つ。呼び出し側は`view3d.render_protein(path)`と呼ぶだけでよく、`.show()`を連鎖させたりnotebookセルの最終式として使う必要はない(そうすると二重表示になる)
 - レイアウト: ビューは薄いグレー(`#ccc`)の枠で囲む -- 3Dmol.jsのマウス操作(回転・ズーム・パン)が効く範囲そのものを枠として可視化し、ユーザーが操作領域を把握できるようにする。キャプションはビューの下ではなく右側に、1プロパティ1行で表示する
 
@@ -42,13 +43,14 @@ view3d.render_protein(
    - `_chain_ids(pdb_text)`: `ATOM`で始まる行のchain列(22列目、0-indexedで`line[21]`)から重複を除きソートしたリスト。`ATOM`行が無ければ空リスト
    - `_resolution(pdb_text)`: legacy PDB形式のヘッダにある`REMARK   2 RESOLUTION.    N.NN ANGSTROMS.`行を正規表現`^REMARK\s+2\s+RESOLUTION\.\s+([\d.]+)\s+ANGSTROMS\.`(`re.MULTILINE`)でパースし、`"N.NN Å"`の形式で返す。マッチしなければ`"N/A"`(NMR構造、AlphaFold予測構造、`chem.protein.align`の出力(Bio.PDBの`PDBIO`はヘッダ/REMARKを保持しないため)はいずれもこのケースになる)
    - `_caption_lines(path, pdb_text, ligand_resnames)`: `path`のファイル名(拡張子除く)をPDB IDとして、`["PDB ID: {pdb_id}", "Chain: {chains}", "Ligand: {ligands}", "Resolution: {resolution}"]`の4行からなるリストを返す(1プロパティ1行、単一の文字列に結合しない)。`chains`は`_chain_ids`の結果をカンマ区切りにしたもの(空なら`"N/A"`)、`ligands`は`ligand_resnames`をカンマ区切りにしたもの(空なら`"none"`)
-4. ビュー構築部分は`_build_view(pdb_text, ligand_resnames, width, height, coloring, bfactor_range)`としてテスト可能な形で切り出す:
+4. ビュー構築部分は`_build_view(pdb_text, ligand_resnames, width, height, coloring, bfactor_range, style)`としてテスト可能な形で切り出す:
    - `py3Dmol.view(width=width, height=height)`を作り、`addModel(pdb_text, "pdb")`
-   - `coloring == "bfactor"`なら`setStyle({"cartoon": {"colorscheme": {"prop": "b", "gradient": "roygb", "min": bfactor_range[0], "max": bfactor_range[1]}}})`
-   - それ以外(`"spectrum"`)なら`setStyle({"cartoon": {"color": "spectrum", "colorscheme": "roygb"}})` -- "spectrum"単体だとN末端が紫がかった3Dmol.jsデフォルトのsinebowになるため、`colorscheme="roygb"`で青(N)→水色→緑→黄→橙→赤(C)の通常の配色にする
-   - `ligand_resnames`が空でなければ`addStyle({"resn": ligand_resnames}, {"stick": {"color": "magenta"}})`(カートゥーンだけではリガンドが描画されないため)。単色`"color": "magenta"`を使う -- カートゥーンの`roygb`スペクトルに対してインパクトのある濃い色でコントラストを出すため。`"colorscheme": "yellowCarbon"`は不採用(スペクトルの黄色部分と衝突する)、また`"pinkCarbon"`は3Dmol.jsに存在しない
+   - `coloring == "bfactor"`なら配色スタイル辞書を`{"colorscheme": {"prop": "b", "gradient": "roygb", "min": bfactor_range[0], "max": bfactor_range[1]}}`とする
+   - それ以外(`"spectrum"`)なら`{"color": "spectrum", "colorscheme": "roygb"}` -- "spectrum"単体だとN末端が紫がかった3Dmol.jsデフォルトのsinebowになるため、`colorscheme="roygb"`で青(N)→水色→緑→黄→橙→赤(C)の通常の配色にする
+   - `style == "cartoon"`ならこの配色スタイル辞書を`setStyle({"cartoon": ...})`にそのまま渡す。`style == "surface"`なら`addSurface("VDW", {**配色スタイル辞書, "opacity": 0.85}, {"hetflag": False})`(非HETATM原子のみを対象にしたvan der Waals表面。半透明にして、下に隠れるリガンドがあれば透けて見えるようにする)
+   - `ligand_resnames`が空でなければ`addStyle({"resn": ligand_resnames}, {"stick": {"color": "magenta"}})`(カートゥーン/サーフェスだけではリガンドが描画されないため)。単色`"color": "magenta"`を使う -- `roygb`スペクトルに対してインパクトのある濃い色でコントラストを出すため。`"colorscheme": "yellowCarbon"`は不採用(スペクトルの黄色部分と衝突する)、また`"pinkCarbon"`は3Dmol.jsに存在しない
    - `zoomTo()`して`view`を返す
-5. `render_protein`本体: 冒頭で`coloring`を`COLORINGS`と照合しなければ`ValueError`。`_build_view(...)`で`view`を作った後、表示は次の2段階で行う:
+5. `render_protein`本体: 冒頭で`coloring`を`COLORINGS`、`style`を`STYLES`と照合し、それぞれ不一致なら`ValueError`。`_build_view(...)`で`view`を作った後、表示は次の2段階で行う:
    - `uuid.uuid4().hex`から一意な`frame_id`(例: `f"chem-view3d-{uuid.uuid4().hex}"`)を作り、`display(HTML(...))`で「幅・高さを`width`/`height`に合わせ、`border:1px solid #ccc;`を付けた空の`<div id="{frame_id}">`」と「`_caption_lines`の各行を`<div><b>{line}</b></div>`にした`<div>`」を`display:flex; align-items:flex-start; gap:16px;`の親`<div>`で横並びにしたHTMLを表示する。枠を先に幅・高さ・ボーダー込みで表示しておくことで、3Dmol.jsが非同期でCDNから読み込まれる間もレイアウトが安定する
    - 続けて`view.insert(frame_id)`を呼ぶ -- py3Dmolの公開API`insert()`は内部で自分のビュー用divを生成した上で、`document.getElementById(frame_id).append(...)`するスクリプトも含めて`publish_display_data`する。これにより直前の`display()`で作った空枠の中に実際の3Dmolビューが挿入される(`view.show()`や`view._make_html()`のような非公開実装には依存しない)
    - `view`は返さない
@@ -69,4 +71,4 @@ view3d.render_protein(
 ## 注意
 
 - このリポジトリはdd_*プロジェクト群、`~/lab/chembl`、`dd_chembl`とは無関係な独立プロジェクト。それらのコードやロジックを参照・流用しない
-- テストは`tests/test_view3d.py`にネットワーク・ブラウザ不要な範囲(`_ligand_resnames`の除外ロジック、`_chain_ids`のchain収集ロジック、`_resolution`のREMARK 2パースロジック(値あり/なし双方)、`_caption_lines`が返すリストの内容、`_build_view`が返す`py3Dmol.view`の内部JS文字列に`coloring="spectrum"`/`"bfactor"`(指定した`bfactor_range`込み)それぞれで期待するスタイルコマンドが含まれる/含まれないことの確認、`render_protein`が不正な`coloring`で`ValueError`になることの確認、`chem.view3d.render.display`と`py3Dmol.view.insert`の両方を`monkeypatch`で差し替えて「枠+キャプション表示→ビューのinsert」の順序・`display`に渡されたHTMLに含まれる`frame_id`が`insert`に渡された`containerid`と一致すること・`render_protein`が`None`を返すことを確認)のみ追加する。実際のブラウザ上での表示確認は手動で行う
+- テストは`tests/test_view3d.py`にネットワーク・ブラウザ不要な範囲(`_ligand_resnames`の除外ロジック、`_chain_ids`のchain収集ロジック、`_resolution`のREMARK 2パースロジック(値あり/なし双方)、`_caption_lines`が返すリストの内容、`_build_view`が返す`py3Dmol.view`の内部JS文字列に`coloring="spectrum"`/`"bfactor"`(指定した`bfactor_range`込み)それぞれで期待するスタイルコマンドが含まれる/含まれないことの確認、`style="cartoon"`では`setStyle({"cartoon"...`が呼ばれ`addSurface`は呼ばれないこと・`style="surface"`では逆に`addSurface("VDW"...`(`"hetflag": false`、`"opacity": 0.85`込み)が呼ばれ`setStyle({"cartoon"...`は呼ばれないこと・`surface`でも`coloring="bfactor"`の配色が反映されること、`render_protein`が不正な`coloring`/`style`で`ValueError`になることの確認、`chem.view3d.render.display`と`py3Dmol.view.insert`の両方を`monkeypatch`で差し替えて「枠+キャプション表示→ビューのinsert」の順序・`display`に渡されたHTMLに含まれる`frame_id`が`insert`に渡された`containerid`と一致すること・`render_protein`が`None`を返すことを確認)のみ追加する。`style="surface"`の実際の見た目は、`_build_view`が返す`view`の`_make_html()`を静的HTMLファイルに書き出しブラウザで開く形で手動確認する(AlphaFold予測構造をVDWサーフェス化し、pLDDT配色が滑らかな塊状のボリュームとして描画されることを確認済み)

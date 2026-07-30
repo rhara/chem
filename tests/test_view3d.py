@@ -330,11 +330,42 @@ def test_build_view_bfactor_coloring_uses_given_range():
     assert '"max": 95' in view.startjs
 
 
+def test_build_view_cartoon_style_uses_setstyle_not_surface():
+    pdb_text = _atom_line(1, "CA", "ALA", "A", 1, 0.0, 0.0, 0.0)
+    view = _build_view(pdb_text, [], 600, 500, "spectrum", (50, 90), "cartoon")
+    assert '.setStyle({"cartoon"' in view.startjs
+    assert ".addSurface(" not in view.startjs
+
+
+def test_build_view_surface_style_adds_vdw_surface_not_cartoon():
+    pdb_text = _atom_line(1, "CA", "ALA", "A", 1, 0.0, 0.0, 0.0)
+    view = _build_view(pdb_text, [], 600, 500, "spectrum", (50, 90), "surface")
+    assert '.addSurface("VDW"' in view.startjs
+    assert '"hetflag": false' in view.startjs
+    assert '"opacity": 0.85' in view.startjs
+    assert '.setStyle({"cartoon"' not in view.startjs
+
+
+def test_build_view_surface_style_uses_bfactor_coloring():
+    pdb_text = _atom_line(1, "CA", "ALA", "A", 1, 0.0, 0.0, 0.0)
+    view = _build_view(pdb_text, [], 600, 500, "bfactor", (30, 95), "surface")
+    assert '"prop": "b"' in view.startjs
+    assert '"min": 30' in view.startjs
+    assert '"max": 95' in view.startjs
+
+
 def test_render_protein_rejects_bad_coloring(tmp_path):
     path = tmp_path / "1ABC.pdb"
     _write_pdb(path, [_atom_line(1, "CA", "ALA", "A", 1, 0.0, 0.0, 0.0)])
     with pytest.raises(ValueError):
         render_protein(str(path), coloring="rainbow")
+
+
+def test_render_protein_rejects_bad_style(tmp_path):
+    path = tmp_path / "1ABC.pdb"
+    _write_pdb(path, [_atom_line(1, "CA", "ALA", "A", 1, 0.0, 0.0, 0.0)])
+    with pytest.raises(ValueError):
+        render_protein(str(path), style="blob")
 
 
 def test_render_protein_frames_and_returns_none(tmp_path, monkeypatch):

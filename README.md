@@ -228,14 +228,23 @@ view3d.render_protein(
 # Or color by the file's B-factor column instead (e.g. AlphaFold's per-residue
 # pLDDT confidence, which is what AlphaFold DB downloads store there).
 view3d.render_protein("af_data/AF-P00734-F1.pdb", coloring="bfactor")
+
+# Or render the backbone as a solid volume instead of a cartoon ribbon --
+# a translucent van der Waals surface (union of a smooth blob at every atom,
+# not individual spheres), so a bound ligand can still show through it.
+view3d.render_protein("af_data/AF-P00734-F1.pdb", coloring="bfactor", style="surface")
 ```
 
-Cartoon-only styles don't draw ligands, so any HETATM group not in `exclude` is
-added as magenta sticks. `coloring="spectrum"` (default) colors the cartoon
-N -> C by residue position; `coloring="bfactor"` colors it by the file's
-per-atom B-factor column instead, scaled over `bfactor_range` (default `(50,
-90)`, AlphaFold's pLDDT confidence convention -- pass the structure's own
-B-factor range for crystallographic temperature factors). The view sits in a
+Cartoon/surface styles don't draw ligands, so any HETATM group not in
+`exclude` is added as magenta sticks. `coloring="spectrum"` (default) colors
+the backbone N -> C by residue position; `coloring="bfactor"` colors it by
+the file's per-atom B-factor column instead, scaled over `bfactor_range`
+(default `(50, 90)`, AlphaFold's pLDDT confidence convention -- pass the
+structure's own B-factor range for crystallographic temperature factors).
+`style="cartoon"` (default) draws a ribbon; `style="surface"` draws a solid,
+translucent (opacity 0.85) van der Waals volume computed by 3Dmol.js via
+marching cubes, restricted to non-HETATM atoms so a ligand keeps its own
+stick rendering rather than being swallowed by the volume. The view sits in a
 light-gray border -- exactly the area where 3Dmol.js's mouse controls
 (rotate/zoom/pan) take over -- with a caption beside it on the right, one
 field per line: the PDB id, chain ids, ligand HET codes, and experimental
