@@ -49,6 +49,49 @@ def test_list_ligand_codes_empty_when_only_solvent(tmp_path):
     assert le.list_ligand_codes(str(path)) == []
 
 
+def test_list_ligand_instances_returns_all_physical_copies(structure_with_ligands):
+    instances = le.list_ligand_instances(structure_with_ligands)
+    assert instances == [
+        {"code": "LIG", "chain": "A", "resnum": 200, "icode": ""},
+        {"code": "OTH", "chain": "B", "resnum": 1, "icode": ""},
+    ]
+
+
+@pytest.fixture
+def structure_with_duplicate_ligand(tmp_path):
+    lines = [
+        _atom_line(1, "C1", "LIG", "A", 200, 10.0, 10.0, 10.0),
+        _atom_line(2, "C2", "LIG", "A", 200, 11.0, 10.0, 10.0),
+        _atom_line(3, "C1", "LIG", "B", 200, 40.0, 40.0, 40.0),
+        _atom_line(4, "C2", "LIG", "B", 200, 41.0, 40.0, 40.0),
+    ]
+    path = tmp_path / "structure.pdb"
+    _write_pdb(path, lines)
+    return str(path)
+
+
+def test_list_ligand_codes_collapses_duplicate_copies(structure_with_duplicate_ligand):
+    assert le.list_ligand_codes(structure_with_duplicate_ligand) == ["LIG"]
+
+
+def test_list_ligand_instances_keeps_duplicate_copies_separate(structure_with_duplicate_ligand):
+    instances = le.list_ligand_instances(structure_with_duplicate_ligand)
+    assert instances == [
+        {"code": "LIG", "chain": "A", "resnum": 200, "icode": ""},
+        {"code": "LIG", "chain": "B", "resnum": 200, "icode": ""},
+    ]
+
+
+def test_pick_ligand_residue_disambiguates_by_chain(structure_with_duplicate_ligand):
+    residue = le._pick_ligand_residue(structure_with_duplicate_ligand, "LIG", chain="B")
+    assert residue.get_parent().id == "B"
+
+
+def test_pick_ligand_residue_chain_not_found(structure_with_duplicate_ligand):
+    with pytest.raises(ValueError):
+        le._pick_ligand_residue(structure_with_duplicate_ligand, "LIG", chain="Z")
+
+
 def test_pick_ligand_residue_not_found(structure_with_ligands):
     with pytest.raises(ValueError):
         le._pick_ligand_residue(structure_with_ligands, "ZZZ")

@@ -31,22 +31,58 @@ class _ResidueSelect(Select):
         return residue is self._residue
 
 
+def _instance_info(residue):
+    _, resnum, icode = residue.id
+    return {
+        "code": residue.get_resname().strip(),
+        "chain": residue.get_parent().id,
+        "resnum": resnum,
+        "icode": icode.strip(),
+    }
+
+
+def list_ligand_instances(structure_path, exclude=SOLVENT_AND_IONS):
+    """Every non-excluded HETATM residue instance in a structure file, one
+    entry per physical occurrence -- e.g. two copies of the same ligand code
+    bound to different chains produce two entries, not one. Each entry is a
+    dict: `{"code", "chain", "resnum", "icode"}`, in file order.
+    """
+    return [
+        _instance_info(r)
+        for r in _hetero_residues(structure_path)
+        if r.get_resname().strip() not in exclude
+    ]
+
+
 def list_ligand_codes(structure_path, exclude=SOLVENT_AND_IONS):
     """Every distinct non-excluded HETATM residue code (3-letter PDB chemical
-    component id) in a structure file, e.g. ["S54"]. A structure with several
-    different bound ligands returns one code per ligand; a structure with only
-    solvent/ions (see `chem.protein.SOLVENT_AND_IONS`) returns an empty list.
+    component id) in a structure file, e.g. ["S54"]. Multiple copies of the
+    same code (e.g. one per chain) collapse to a single entry here -- use
+    `list_ligand_instances` to enumerate every physical occurrence instead.
     """
-    codes = {r.get_resname().strip() for r in _hetero_residues(structure_path)}
-    return sorted(codes - set(exclude))
+    codes = {i["code"] for i in list_ligand_instances(structure_path, exclude=exclude)}
+    return sorted(codes)
 
 
-def _pick_ligand_residue(structure_path, code):
+def _pick_ligand_residue(structure_path, code, chain=None, resnum=None, icode=None):
     matches = [r for r in _hetero_residues(structure_path) if r.get_resname().strip() == code.upper()]
+    if chain is not None:
+        matches = [r for r in matches if r.get_parent().id == chain]
+    if resnum is not None:
+        matches = [r for r in matches if r.id[1] == resnum]
+    if icode is not None:
+        matches = [r for r in matches if r.id[2].strip() == icode]
     if not matches:
-        raise ValueError(f"no HETATM group with code '{code}' found in {structure_path}")
+        raise ValueError(
+            f"no HETATM group with code '{code}'"
+            f"{f', chain={chain!r}' if chain is not None else ''}"
+            f"{f', resnum={resnum!r}' if resnum is not None else ''}"
+            f"{f', icode={icode!r}' if icode is not None else ''}"
+            f" found in {structure_path}"
+        )
     # Several copies of the same ligand (e.g. one per chain) are chemically
-    # identical, so any instance does -- pick the most complete one.
+    # identical when unresolved, so with no chain/resnum/icode given to pin
+    # down a specific one, pick the most complete instance.
     return max(matches, key=lambda r: len(list(r.get_atoms())))
 
 
@@ -115,20 +151,25 @@ def _assign_bond_orders(mol, code):
 
 
 @logged
-def load_ligand(structure_path, ligand):
+def load_ligand(structure_path, ligand, chain=None, resnum=None, icode=None):
     """Extract a ligand from a structure file as a proper RDKit molecule.
 
     `ligand` is its 3-letter PDB chemical component code (see
-    `list_ligand_codes`). The residue's atoms and 3D coordinates come straight
-    from the structure file, but PDB format has no bond-order information, so
-    RDKit's initial guess is all single bonds with no aromaticity -- this is
-    corrected by fetching the PDB Chemical Component Dictionary's ideal SMILES
-    for `ligand` and using it as a bond-order template
+    `list_ligand_codes`/`list_ligand_instances`). When a code occurs more than
+    once (e.g. one copy per chain), pass `chain`/`resnum`/`icode` -- as found
+    in a `list_ligand_instances` entry -- to pick that exact instance;
+    otherwise the most complete matching instance is used.
+
+    The residue's atoms and 3D coordinates come straight from the structure
+    file, but PDB format has no bond-order information, so RDKit's initial
+    guess is all single bonds with no aromaticity -- this is corrected by
+    fetching the PDB Chemical Component Dictionary's ideal SMILES for
+    `ligand` and using it as a bond-order template
     (`rdkit.Chem.AllChem.AssignBondOrdersFromTemplate`). Raises if the
     template doesn't match the extracted atoms (e.g. a covalently modified or
     incomplete residue).
     """
-    residue = _pick_ligand_residue(structure_path, ligand)
+    residue = _pick_ligand_residue(structure_path, ligand, chain=chain, resnum=resnum, icode=icode)
     raw_mol = _residue_to_raw_mol(residue, ligand)
     return _assign_bond_orders(raw_mol, ligand)
 

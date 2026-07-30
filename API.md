@@ -173,22 +173,36 @@ draw ligands at all).
 
 ## chem.ligand
 
+### `ligand.list_ligand_instances(structure_path, exclude=SOLVENT_AND_IONS)`
+
+Every non-excluded HETATM residue *instance* (physical occurrence) in a
+structure file, as a list of `{"code", "chain", "resnum", "icode"}` dicts, in
+file order. Two copies of the same ligand code (e.g. one per chain in a
+dimer) produce two separate entries here, not one — use these dicts'
+`chain`/`resnum`/`icode` to pin down a specific copy in `load_ligand`.
+Solvent/ions (`chem.protein.SOLVENT_AND_IONS`) are excluded by default; pass
+a wider `exclude` (e.g. adding a dataset-specific non-ligand HETATM code like
+a glycosylation sugar) to filter those out too.
+
 ### `ligand.list_ligand_codes(structure_path, exclude=SOLVENT_AND_IONS)`
 
 Every distinct non-excluded HETATM residue code (3-letter PDB chemical
-component id) in a structure file, e.g. `["S54"]`. A structure with several
-different bound ligands returns one code per ligand; a structure with only
-solvent/ions (`chem.protein.SOLVENT_AND_IONS`) returns an empty list. Pass a
-wider `exclude` (e.g. adding a dataset-specific non-ligand HETATM code like a
-glycosylation sugar) to filter those out too.
+component id) in a structure file, e.g. `["S54"]`. Multiple copies of the
+same code collapse to a single entry here — use `list_ligand_instances` to
+enumerate every physical occurrence instead.
 
-### `ligand.load_ligand(structure_path, ligand)`
+### `ligand.load_ligand(structure_path, ligand, chain=None, resnum=None, icode=None)`
 
 Extract a ligand from a structure file as a proper RDKit molecule.
 
 - `structure_path` — path to a PDB file.
 - `ligand` — its 3-letter PDB chemical component code (see
-  `list_ligand_codes`).
+  `list_ligand_codes`/`list_ligand_instances`).
+- `chain`/`resnum`/`icode` — pin down one specific instance when `ligand`'s
+  code occurs more than once (values as found in a `list_ligand_instances`
+  entry). Left as `None` (default), the most complete matching instance is
+  used — fine when the code is known to be unique, or when any copy will do
+  since they're chemically identical.
 
 The residue's atoms and 3D coordinates come straight from the structure file,
 but PDB format has no bond-order information, so RDKit's initial guess is all
@@ -198,12 +212,12 @@ its recorded descriptors, since some spell out a stereo-defining hydrogen as
 an explicit atom that would otherwise break the atom-count match) and using
 it as a bond-order template (`rdkit.Chem.AllChem.AssignBondOrdersFromTemplate`).
 
-Raises `ValueError` if the ligand code isn't found in the structure, or if no
-candidate template matches the extracted atoms — e.g. one piece of a
-covalently-linked multi-residue ligand (a peptidomimetic inhibitor built from
-linked amino-acid HETATM groups extracted on its own no longer has the same
-atoms as the free amino acid), or a residue with incomplete crystallographic
-density.
+Raises `ValueError` if no matching residue is found (bad code, or bad
+chain/resnum/icode), or if no candidate template matches the extracted atoms
+— e.g. one piece of a covalently-linked multi-residue ligand (a
+peptidomimetic inhibitor built from linked amino-acid HETATM groups
+extracted on its own no longer has the same atoms as the free amino acid), or
+a residue with incomplete crystallographic density.
 
 ### `ligand.qed(mol)`
 
