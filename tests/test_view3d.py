@@ -184,6 +184,31 @@ def test_ligand_molblock_writes_unkekulized_aromatic_bonds(monkeypatch):
     assert bond_orders == {4}  # MDL "aromatic" bond type, not a kekulized 1/2 split
 
 
+def test_ligand_molblock_strips_explicit_hydrogens_before_atom_count_check(monkeypatch):
+    # RDKit's removeHs=True is a no-op when sanitize=False, so a ligand PDB
+    # block carrying explicit H atoms must have them stripped separately
+    # (via Chem.RemoveHs) before comparing atom counts against the Hs-free
+    # CCD template -- otherwise the count mismatch makes this return None
+    # and the ligand silently falls back to plain non-aromatic rendering.
+    ring_lines = _benzene_ring_lines()
+    h_lines = []
+    for i in range(6):
+        angle = math.radians(60 * i)
+        x, y = 2.5 * math.cos(angle), 2.5 * math.sin(angle)
+        h_lines.append(
+            _atom_line(i + 7, f"H{i + 1}", "LIG", "A", 1, x, y, 0.0, record="HETATM")
+        )
+    pdb_text = "\n".join(ring_lines + h_lines)
+    monkeypatch.setattr("chem.view3d.render._template_mol", lambda resname: _benzene_template())
+
+    molblock = _ligand_molblock(pdb_text, "LIG", "A", "1", "")
+
+    assert molblock is not None
+    bond_lines = molblock.splitlines()[10:16]  # counts line, then 6 atom lines, then 6 bond lines
+    bond_orders = {int(line.split()[2]) for line in bond_lines}
+    assert bond_orders == {4}  # MDL "aromatic" bond type, not a kekulized 1/2 split
+
+
 def test_ligand_molblock_none_when_template_lookup_fails(monkeypatch):
     pdb_text = "\n".join(_benzene_ring_lines())
     monkeypatch.setattr("chem.view3d.render._template_mol", lambda resname: None)

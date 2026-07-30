@@ -106,7 +106,9 @@ def _ligand_molblock(pdb_text, resname, chain, resnum, icode):
     if template is None:
         return None
     block = _instance_block(pdb_text, resname, chain, resnum, icode)
-    mol = Chem.MolFromPDBBlock(block, sanitize=False, removeHs=True)
+    mol = Chem.MolFromPDBBlock(block, sanitize=False, removeHs=False)
+    if mol is not None:
+        mol = Chem.RemoveHs(mol, sanitize=False)
     if mol is None or mol.GetNumAtoms() != template.GetNumAtoms():
         return None
     try:
