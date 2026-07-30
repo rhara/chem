@@ -171,6 +171,50 @@ displaying as a ligand (e.g. adding a `stick` style for everything in a
 structure's HETATM records except this set, since cartoon-only styles don't
 draw ligands at all).
 
+## chem.ligand
+
+### `ligand.list_ligand_codes(structure_path, exclude=SOLVENT_AND_IONS)`
+
+Every distinct non-excluded HETATM residue code (3-letter PDB chemical
+component id) in a structure file, e.g. `["S54"]`. A structure with several
+different bound ligands returns one code per ligand; a structure with only
+solvent/ions (`chem.protein.SOLVENT_AND_IONS`) returns an empty list. Pass a
+wider `exclude` (e.g. adding a dataset-specific non-ligand HETATM code like a
+glycosylation sugar) to filter those out too.
+
+### `ligand.load_ligand(structure_path, ligand)`
+
+Extract a ligand from a structure file as a proper RDKit molecule.
+
+- `structure_path` — path to a PDB file.
+- `ligand` — its 3-letter PDB chemical component code (see
+  `list_ligand_codes`).
+
+The residue's atoms and 3D coordinates come straight from the structure file,
+but PDB format has no bond-order information, so RDKit's initial guess is all
+single bonds with no aromaticity. This is corrected by fetching the PDB
+Chemical Component Dictionary's ideal SMILES for `ligand` (trying a few of
+its recorded descriptors, since some spell out a stereo-defining hydrogen as
+an explicit atom that would otherwise break the atom-count match) and using
+it as a bond-order template (`rdkit.Chem.AllChem.AssignBondOrdersFromTemplate`).
+
+Raises `ValueError` if the ligand code isn't found in the structure, or if no
+candidate template matches the extracted atoms — e.g. one piece of a
+covalently-linked multi-residue ligand (a peptidomimetic inhibitor built from
+linked amino-acid HETATM groups extracted on its own no longer has the same
+atoms as the free amino acid), or a residue with incomplete crystallographic
+density.
+
+### `ligand.qed(mol)`
+
+Quantitative Estimate of Drug-likeness (Bickerton et al., 2012) for an RDKit
+molecule, 0-1. Thin wrapper around `rdkit.Chem.QED.qed`.
+
+### `ligand.molecular_weight(mol)`
+
+Average molecular weight (g/mol) for an RDKit molecule. Thin wrapper around
+`rdkit.Chem.Descriptors.MolWt`.
+
 ## chem.view3d
 
 ### `view3d.render_protein(path, exclude=SOLVENT_AND_IONS, width=600, height=500, coloring="spectrum", bfactor_range=(50, 90))`

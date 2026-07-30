@@ -180,6 +180,31 @@ don't contain the ligand themselves. Returns a dict with `pocket_id`,
 dict under `info`, and `residues` (`[{"chain", "resnum", "resname"}, ...]`) lining
 the selected pocket.
 
+## chem.ligand — extract a ligand and score its drug-likeness
+
+```python
+from chem import ligand
+
+# Every distinct non-solvent/ion HETATM code in the file, e.g. ["S54"].
+codes = ligand.list_ligand_codes("data/3RM0.pdb")
+
+# Extract one as a proper RDKit molecule: real 3D coordinates, plus bond
+# orders/aromaticity fixed up against the PDB Chemical Component Dictionary's
+# ideal SMILES for that code (PDB files carry no bond-order information, so
+# RDKit's raw read is otherwise all single bonds).
+mol = ligand.load_ligand("data/3RM0.pdb", "S54")
+
+ligand.molecular_weight(mol)  # 499.6
+ligand.qed(mol)  # 0.29 -- Quantitative Estimate of Drug-likeness, 0-1
+```
+
+A residue that's really one piece of a covalently-linked multi-residue
+ligand (e.g. a peptidomimetic inhibitor built from linked D-amino acid
+HETATM groups), or has incomplete crystallographic density, can't be matched
+to a standalone template -- `load_ligand` raises `ValueError` rather than
+guessing, so batch over `list_ligand_codes` with a `try`/`except` to skip and
+report those.
+
 ## chem.view3d — interactive py3Dmol structure viewer
 
 ```python
@@ -235,6 +260,7 @@ conda run -n chem python -c "import rdkit; print(rdkit.__version__)"
 - `src/chem/rcsb/` — RCSB PDB structure download (`fetch.py`: `download_structures`, re-exported at package level)
 - `src/chem/alphafold/` — AlphaFold DB structure download (`fetch.py`: `download_structures`, re-exported at package level)
 - `src/chem/protein/` — structural tools (`structural_align.py`: `align`; `pocket.py`: `find_pocket`; both re-exported at package level)
+- `src/chem/ligand/` — ligand extraction and scoring (`extract.py`: `list_ligand_codes`, `load_ligand`, `qed`, `molecular_weight`, all re-exported at package level)
 - `src/chem/view3d/` — interactive structure viewing (`render.py`: `render_protein`, re-exported at package level)
 - `notebooks/` — example notebooks
 - `tests/` — pytest test suite
