@@ -88,6 +88,46 @@ AlphaFold API itself returns (robust to non-standard entry ids).
 Same skip-if-exists behavior as `chem.rcsb`. Returns the number of entries
 for which at least one file is present.
 
+## chem.blast
+
+### `blast.blastp(sequence, database, email, matrix="BLOSUM62", expect=1e-10, max_hits=50, poll_interval=10, timeout=600, title="chem.blast")`
+
+Run a protein BLAST (`blastp`) search via
+[EBI's Job Dispatcher REST API](https://www.ebi.ac.uk/jdispatcher/docs/webservices/)
+and return the ranked hit list. Submits the search, polls until it finishes,
+then fetches and parses the JSON result.
+
+- `sequence` — a protein sequence, plain or FASTA-formatted (EBI accepts
+  either).
+- `database` — which EBI-hosted database to search, e.g. `"pdb"` (every PDB
+  chain — hits are chain-level, e.g. `"1ABC_A"`, so a homolog with an
+  experimentally solved structure appears once per chain) or
+  `"uniprotkb_swissprot"` (reviewed UniProt entries, one hit per protein).
+  See the webservices docs above for the full list EBI hosts.
+- `email` — contact email required by EBI's Job Dispatcher API (their
+  abuse-prevention/contact policy — not stored or used for anything else).
+- `matrix` — substitution matrix, default `"BLOSUM62"`.
+- `expect` — E-value threshold (upper bound, inclusive), default `1e-10`.
+- `max_hits` — maximum number of hits to request, default `50` (also EBI's
+  own per-search cap).
+- `poll_interval` — seconds between status polls while the job runs, default
+  `10`.
+- `timeout` — seconds to wait for the job to reach a terminal state before
+  raising `TimeoutError`, default `600`.
+- `title` — job title EBI records for the search, default `"chem.blast"`.
+
+Returns a list of dicts, one per hit, in EBI's own ranking order (best
+first): `accession`, `description`, `identity_pct`, `align_len`, `evalue`.
+Raises `RuntimeError` if the search job itself ends in a failure state, and
+`TimeoutError` if it doesn't reach a terminal state within `timeout` seconds.
+
+**Not decorated with `chem.verbosity.logged`**, unlike every other function
+in this reference (see the note at the top of this file) — that decorator
+logs every bound argument, including `email`, to stderr on each call, which
+would echo the caller's contact email for no benefit. `CHEM_QUIETNESS` still
+silences its `tqdm` progress bar and the one-line hit-count summary printed
+on success.
+
 ## chem.protein
 
 ### `protein.align(structures, reference=None, chain=None, outdir="aligned")`

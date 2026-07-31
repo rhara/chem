@@ -130,6 +130,28 @@ When `plddt_thres` is set, only entries whose average pLDDT confidence
 entry is downloaded regardless of confidence. As with `chem.rcsb`, a file already
 present in `outdir` is left as-is and not re-downloaded.
 
+## chem.blast — BLAST search via EBI's Job Dispatcher
+
+```python
+from chem import blast
+
+hits = blast.blastp(
+    sequence,  # a protein sequence, plain or FASTA-formatted
+    database="pdb",  # e.g. "pdb" (chain-level hits with a solved structure) or "uniprotkb_swissprot"
+    email="you@example.com",  # required by EBI's Job Dispatcher API
+)
+# [{"accession": "1ABC_A", "description": "...", "identity_pct": 44.8, "align_len": 288, "evalue": 7e-82}, ...]
+```
+
+Submits a `blastp` search to [EBI's Job Dispatcher](https://www.ebi.ac.uk/jdispatcher/docs/webservices/),
+polls until it finishes (progress shown via `tqdm`), and returns the ranked
+hit list — handy for finding a data-rich homolog (more PDB structures, more
+ChEMBL activity data) when the actual target of interest has little of
+either. Unlike every other `chem` function, `blastp` is deliberately **not**
+decorated with the call-logging described below, since that would echo the
+caller's `email` to stderr; `CHEM_QUIETNESS` still controls its progress bar
+and summary line.
+
 ## chem.protein — structural alignment and pocket detection
 
 ```python
@@ -299,6 +321,7 @@ conda run -n chem python -c "import rdkit; print(rdkit.__version__)"
 - `src/chem/chembl/` — ChEMBL data access (`fetch.py`: `download_activities`, re-exported at package level)
 - `src/chem/rcsb/` — RCSB PDB structure download (`fetch.py`: `download_structures`, re-exported at package level)
 - `src/chem/alphafold/` — AlphaFold DB structure download (`fetch.py`: `download_structures`, re-exported at package level)
+- `src/chem/blast/` — BLAST search via EBI's Job Dispatcher (`search.py`: `blastp`, re-exported at package level)
 - `src/chem/protein/` — structural tools (`structural_align.py`: `align`; `pocket.py`: `find_pocket`; both re-exported at package level)
 - `src/chem/ligand/` — ligand extraction and scoring (`extract.py`: `list_ligand_codes`, `list_ligand_instances`, `load_ligand`, `qed`, `molecular_weight`, all re-exported at package level)
 - `src/chem/view3d/` — interactive structure viewing (`render.py`: `render_protein`, re-exported at package level)
