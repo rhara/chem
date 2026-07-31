@@ -9,7 +9,7 @@ from IPython.display import HTML, display
 from rdkit import Chem
 from rdkit.Chem import AllChem
 
-from ..protein import SOLVENT_AND_IONS
+from ..protein import WATER
 
 _RESOLUTION_RE = re.compile(r"^REMARK\s+2\s+RESOLUTION\.\s+([\d.]+)\s+ANGSTROMS\.", re.MULTILINE)
 
@@ -203,7 +203,7 @@ def _build_view(pdb_text, ligand_resnames, width, height, coloring, bfactor_rang
 
 def render_protein(
     path,
-    exclude=SOLVENT_AND_IONS,
+    exclude=WATER,
     width=600,
     height=500,
     coloring="spectrum",
@@ -233,10 +233,14 @@ def render_protein(
 
     path: path to a PDB file.
     exclude: HET codes to leave off the ligand sticks. Defaults to
-        chem.protein.SOLVENT_AND_IONS (water/ions/crystallization additives);
-        pass a superset (e.g. `SOLVENT_AND_IONS | {"NAG", "TYS"}`) to also
-        exclude structure-specific non-ligand HETATM groups such as
-        glycosylation sugars or modified residues.
+        chem.protein.WATER (just water, e.g. HOH) -- bound ions and
+        crystallization additives are shown, since they're usually worth
+        seeing even though they aren't drug-like. Pass
+        `chem.protein.SOLVENT_AND_IONS` for the old broader default (also
+        excludes ions/additives), or a superset (e.g.
+        `SOLVENT_AND_IONS | {"NAG", "TYS"}`) to also exclude
+        structure-specific non-ligand HETATM groups such as glycosylation
+        sugars or modified residues.
     width / height: viewer size in pixels.
     coloring: "spectrum" (default) -- rainbow N -> C by residue position; or
         "bfactor" -- rainbow by the file's per-atom B-factor column, e.g.

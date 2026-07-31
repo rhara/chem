@@ -3,6 +3,11 @@ import pytest
 import chem.protein.pocket as pk
 
 
+def test_water_is_a_strict_subset_of_solvent_and_ions():
+    assert pk.WATER == {"HOH", "WAT", "DOD"}
+    assert pk.WATER < pk.SOLVENT_AND_IONS  # e.g. ions like "NA"/"ZN" aren't in WATER
+
+
 def _atom_line(serial, name, resname, chain, resseq, x, y, z, record="ATOM", icode=" "):
     element = name.strip()[0]
     return (

@@ -207,10 +207,18 @@ descending.
 
 A `frozenset` of common crystallization solvent/ion/additive HET codes (not
 exhaustive) — the same exclusion list `find_pocket`'s ligand auto-detection
-uses. Handy for deciding which HETATM groups in a structure are worth
-displaying as a ligand (e.g. adding a `stick` style for everything in a
-structure's HETATM records except this set, since cartoon-only styles don't
-draw ligands at all).
+and `chem.ligand`'s default `exclude` use, so bare ions/crystallization junk
+don't get treated as "the" ligand. For deciding what's worth *displaying*,
+see `WATER` below instead — an ion or additive is usually still worth
+seeing, even though it isn't drug-like.
+
+### `protein.WATER`
+
+A `frozenset` of just water HET codes (`HOH`, `WAT`, `DOD`) — a strict subset
+of `SOLVENT_AND_IONS`. This is `view3d.render_protein`'s default `exclude`:
+everything except water is drawn as a ligand, since bound ions and
+crystallization additives are usually worth seeing even though they aren't
+drug-like.
 
 ## chem.ligand
 
@@ -272,7 +280,7 @@ Average molecular weight (g/mol) for an RDKit molecule. Thin wrapper around
 
 ## chem.view3d
 
-### `view3d.render_protein(path, exclude=SOLVENT_AND_IONS, width=600, height=500, coloring="spectrum", bfactor_range=(50, 90), style="cartoon")`
+### `view3d.render_protein(path, exclude=WATER, width=600, height=500, coloring="spectrum", bfactor_range=(50, 90), style="cartoon")`
 
 Display a PDB structure file as an interactive py3Dmol view in a light-gray
 bordered frame, with a caption beside it on the right: the protein backbone
@@ -283,9 +291,12 @@ style draws ligands on its own). The border marks exactly the area where
 
 - `path` — path to a PDB file.
 - `exclude` — HET codes to leave off the ligand sticks. Defaults to
-  `chem.protein.SOLVENT_AND_IONS`; pass a superset (e.g.
-  `SOLVENT_AND_IONS | {"NAG", "TYS"}`) to also exclude structure-specific
-  non-ligand HETATM groups such as glycosylation sugars or modified residues.
+  `chem.protein.WATER` (just water) — bound ions and crystallization
+  additives are shown, since they're usually worth seeing even though they
+  aren't drug-like. Pass `chem.protein.SOLVENT_AND_IONS` for the old broader
+  default, or a superset (e.g. `SOLVENT_AND_IONS | {"NAG", "TYS"}`) to also
+  exclude structure-specific non-ligand HETATM groups such as glycosylation
+  sugars or modified residues.
 - `width` / `height` — viewer size in pixels.
 - `coloring` — `"spectrum"` (default): rainbow N -> C by residue position; or
   `"bfactor"`: rainbow by the file's per-atom B-factor column (e.g.

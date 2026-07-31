@@ -12,6 +12,12 @@ from rdkit import Chem
 
 from ..verbosity import is_quiet, logged
 
+# Just water -- for display purposes (e.g. chem.view3d.render_protein's default
+# exclude), where even a bound ion or crystallization additive is usually worth
+# seeing. Narrower than SOLVENT_AND_IONS below, which additionally drops those
+# for ligand auto-detection purposes, where they'd just be noise.
+WATER = frozenset({"HOH", "WAT", "DOD"})
+
 # Common crystallization solvent/ion/additive HET codes to exclude when
 # auto-detecting "the" ligand from a structure's HETATM records. Not exhaustive.
 SOLVENT_AND_IONS = frozenset(

@@ -242,10 +242,11 @@ from chem import view3d
 from chem.protein import SOLVENT_AND_IONS
 
 # Rainbow (N -> C) cartoon backbone, plus any HETATM ligand group as sticks,
-# followed by a caption. Displays directly -- just call it.
+# followed by a caption. Displays directly -- just call it. Default exclude is
+# chem.protein.WATER (just water), so bound ions/additives show up too.
 view3d.render_protein(
     "data/1PPB.pdb",
-    exclude=SOLVENT_AND_IONS | {"NAG"},  # default: SOLVENT_AND_IONS
+    exclude=SOLVENT_AND_IONS | {"NAG"},  # go narrower than the WATER default if wanted
     width=600,
     height=500,
 )

@@ -434,3 +434,30 @@ def test_render_protein_frames_and_returns_none(tmp_path, monkeypatch):
     match = re.search(r'id="(chem-view3d-[0-9a-f]+)"', html)
     assert match is not None
     assert events[1][1] == match.group(1)
+
+
+def test_render_protein_default_exclude_shows_ions_hides_water(tmp_path, monkeypatch):
+    # WATER (just water) is the default `exclude`, not the broader
+    # SOLVENT_AND_IONS -- a bound ion should show up as a ligand by default,
+    # unlike a water molecule.
+    lines = [
+        _atom_line(1, "CA", "ALA", "H", 1, 0.0, 0.0, 0.0),
+        _atom_line(2, "NA", "NA", "H", 200, 10.0, 10.0, 10.0, record="HETATM"),
+        _atom_line(3, "O1", "HOH", "H", 300, 20.0, 20.0, 20.0, record="HETATM"),
+    ]
+    path = tmp_path / "1ABC.pdb"
+    _write_pdb(path, lines)
+
+    events = []
+    monkeypatch.setattr(
+        "chem.view3d.render.display", lambda obj: events.append(("display", obj.data))
+    )
+    monkeypatch.setattr(
+        py3Dmol.view, "insert", lambda self, containerid: events.append(("insert", containerid))
+    )
+    monkeypatch.setattr("chem.view3d.render._template_mol", lambda resname: None)
+
+    render_protein(str(path))
+
+    html = events[0][1]
+    assert "Ligand: NA" in html

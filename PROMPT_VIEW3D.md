@@ -1,6 +1,6 @@
 # chem.view3d.render_protein の再現プロンプト
 
-`chem`リポジトリの`chem`パッケージ内に、py3Dmolによる構造表示用のサブパッケージ`view3d`(`chem.view3d`)を追加し、単一のPDBファイルをインタラクティブに表示する関数を実装するための指示。`chem.protein`の`SOLVENT_AND_IONS`を再利用する。
+`chem`リポジトリの`chem`パッケージ内に、py3Dmolによる構造表示用のサブパッケージ`view3d`(`chem.view3d`)を追加し、単一のPDBファイルをインタラクティブに表示する関数を実装するための指示。`chem.protein`の`WATER`(表示用、水のみ除外)を再利用する(`SOLVENT_AND_IONS`はイオン・結晶化添加剤まで除外してしまうため表示のデフォルトには使わない — `chem.protein.find_pocket`/`chem.ligand`側のリガンド自動検出専用)。
 
 ## 背景
 
@@ -20,13 +20,13 @@ view3d.render_protein(pdb_filename)
 ```python
 from chem import view3d
 view3d.render_protein(
-    path, exclude=SOLVENT_AND_IONS, width=600, height=500,
+    path, exclude=WATER, width=600, height=500,
     coloring="spectrum", bfactor_range=(50, 90), style="cartoon",
 )
 ```
 
 - `path`: PDBファイルへのパス
-- `exclude`: リガンドのstick表示から除外するHETコードの集合。デフォルトは`chem.protein.SOLVENT_AND_IONS`。呼び出し側で`SOLVENT_AND_IONS | {"NAG", "TYS"}`のように追加のコードを合わせて渡せば、構造固有の非リガンドHETATM(糖鎖修飾、修飾残基など)も除外できる
+- `exclude`: リガンドのstick表示から除外するHETコードの集合。デフォルトは`chem.protein.WATER`(水のみ)— 結合イオンや結晶化添加剤は薬らしくはないが表示上は見えていた方が有用なことが多いため、デフォルトでは除外しない。呼び出し側で`chem.protein.SOLVENT_AND_IONS`(旧来の広い既定値)や`SOLVENT_AND_IONS | {"NAG", "TYS"}`のように追加のコードを合わせて渡せば、イオン・結晶化添加剤・構造固有の非リガンドHETATM(糖鎖修飾、修飾残基など)も除外できる
 - `width`/`height`: ビューアのピクセルサイズ
 - `coloring`: バックボーンの配色方式。`"spectrum"`(デフォルト) -- 残基位置でN末端→C末端をレインボー表示。`"bfactor"` -- ファイルのB-factor列(例: AlphaFoldが格納するper-residue pLDDT信頼度)でレインボー表示
 - `bfactor_range`: `coloring="bfactor"`のときのグラデーションの`(min, max)`(`"spectrum"`では無視)。デフォルトはAlphaFoldのpLDDT信頼度の慣習に合わせた`(50, 90)`。結晶構造の温度因子(B-factor)を使う場合は構造自体のB-factor範囲を渡す
@@ -65,10 +65,10 @@ view3d.render_protein(
 
 `notebooks/example_proteins.ipynb`の2つのセルを`view3d.render_protein`呼び出しに置き換える:
 
-- 「View one of the downloaded structures」: ベタ書きのpy3Dmol呼び出しを`view3d.render_protein`呼び出しに置き換える。`ipywidgets.Output()`のコンテキスト内で使うが、`render_protein`は戻り値を持たず自身で表示まで完結するため、`.show()`は連鎖させず`view3d.render_protein(os.path.join("data", pdb_filename), exclude=_display_exclude)`とだけ呼ぶ(`coloring`は指定せず既定の`"spectrum"`のまま)。`_display_exclude = SOLVENT_AND_IONS | {"NAG", "TYS", "MRD"}`(グリコシル化糖鎖・スルホチロシン・結晶化添加剤MRD)はnotebook側にそのまま残す(トロンビン構造セット固有の除外リストのため、関数のデフォルトには含めない)
+- 「View one of the downloaded structures」: ベタ書きのpy3Dmol呼び出しを`view3d.render_protein`呼び出しに置き換える。`ipywidgets.Output()`のコンテキスト内で使うが、`render_protein`は戻り値を持たず自身で表示まで完結するため、`.show()`は連鎖させず`view3d.render_protein(os.path.join("data", pdb_filename), exclude=_display_exclude)`とだけ呼ぶ(`coloring`は指定せず既定の`"spectrum"`のまま)。`_display_exclude = WATER`(水のみ除外。イオン・結晶化添加剤・糖鎖修飾・修飾残基などは全て表示する)はnotebook側にそのまま残す
 - 「View the predicted structure, colored by pLDDT confidence」: ベタ書きのpy3Dmol呼び出し(`setStyle({"cartoon": {"colorscheme": {"prop": "b", "gradient": "roygb", "min": 50, "max": 90}}})`)を`view3d.render_protein(os.path.join("af_data", pdb_files[0]), coloring="bfactor", width=600, height=600)`に置き換える(`bfactor_range`は既定の`(50, 90)`のままでpLDDTの慣習と一致するため省略可)
 
 ## 注意
 
 - このリポジトリはdd_*プロジェクト群、`~/lab/chembl`、`dd_chembl`とは無関係な独立プロジェクト。それらのコードやロジックを参照・流用しない
-- テストは`tests/test_view3d.py`にネットワーク・ブラウザ不要な範囲(`_ligand_resnames`の除外ロジック、`_chain_ids`のchain収集ロジック、`_resolution`のREMARK 2パースロジック(値あり/なし双方)、`_caption_lines`が返すリストの内容、`_build_view`が返す`py3Dmol.view`の内部JS文字列に`coloring="spectrum"`/`"bfactor"`(指定した`bfactor_range`込み)それぞれで期待するスタイルコマンドが含まれる/含まれないことの確認、`style="cartoon"`では`setStyle({"cartoon"...`が呼ばれ`addSurface`は呼ばれないこと・`style="surface"`では逆に`addSurface("VDW"...`(`"hetflag": false`、`"opacity": 0.85`込み)が呼ばれ`setStyle({"cartoon"...`は呼ばれないこと・`surface`でも`coloring="bfactor"`の配色が反映されること、`render_protein`が不正な`coloring`/`style`で`ValueError`になることの確認、`chem.view3d.render.display`と`py3Dmol.view.insert`の両方を`monkeypatch`で差し替えて「枠+キャプション表示→ビューのinsert」の順序・`display`に渡されたHTMLに含まれる`frame_id`が`insert`に渡された`containerid`と一致すること・`render_protein`が`None`を返すことを確認)のみ追加する。`style="surface"`の実際の見た目は、`_build_view`が返す`view`の`_make_html()`を静的HTMLファイルに書き出しブラウザで開く形で手動確認する(AlphaFold予測構造をVDWサーフェス化し、pLDDT配色が滑らかな塊状のボリュームとして描画されることを確認済み)
+- テストは`tests/test_view3d.py`にネットワーク・ブラウザ不要な範囲(`_ligand_resnames`の除外ロジック、`_chain_ids`のchain収集ロジック、`_resolution`のREMARK 2パースロジック(値あり/なし双方)、`_caption_lines`が返すリストの内容、`_build_view`が返す`py3Dmol.view`の内部JS文字列に`coloring="spectrum"`/`"bfactor"`(指定した`bfactor_range`込み)それぞれで期待するスタイルコマンドが含まれる/含まれないことの確認、`style="cartoon"`では`setStyle({"cartoon"...`が呼ばれ`addSurface`は呼ばれないこと・`style="surface"`では逆に`addSurface("VDW"...`(`"hetflag": false`、`"opacity": 0.85`込み)が呼ばれ`setStyle({"cartoon"...`は呼ばれないこと・`surface`でも`coloring="bfactor"`の配色が反映されること、`render_protein`が不正な`coloring`/`style`で`ValueError`になることの確認、デフォルト`exclude`(`WATER`)では水は除外されるがイオン(例: `NA`)はリガンドとして表示されること、`chem.view3d.render.display`と`py3Dmol.view.insert`の両方を`monkeypatch`で差し替えて「枠+キャプション表示→ビューのinsert」の順序・`display`に渡されたHTMLに含まれる`frame_id`が`insert`に渡された`containerid`と一致すること・`render_protein`が`None`を返すことを確認)のみ追加する。`style="surface"`の実際の見た目は、`_build_view`が返す`view`の`_make_html()`を静的HTMLファイルに書き出しブラウザで開く形で手動確認する(AlphaFold予測構造をVDWサーフェス化し、pLDDT配色が滑らかな塊状のボリュームとして描画されることを確認済み)
