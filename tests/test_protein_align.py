@@ -32,8 +32,9 @@ def test_align_writes_reference_even_when_not_in_structures(tmp_path):
     results = pa.align([str(mobile_path)], reference=str(ref_path), outdir=str(outdir))
 
     assert sorted(os.listdir(outdir)) == ["mobile.pdb", "ref.pdb"]
-    assert results[str(ref_path)] == 0.0
-    assert results[str(mobile_path)] == pytest.approx(0.0, abs=1e-6)
+    assert results[str(ref_path)] == {"rmsd": 0.0, "identity": 1.0}
+    assert results[str(mobile_path)]["rmsd"] == pytest.approx(0.0, abs=1e-6)
+    assert results[str(mobile_path)]["identity"] == 1.0
 
 
 def test_align_rmsd_is_plain_float_rounded_to_3dp(tmp_path):
@@ -51,10 +52,13 @@ def test_align_rmsd_is_plain_float_rounded_to_3dp(tmp_path):
 
     results = pa.align([str(mobile_path)], reference=str(ref_path), outdir=str(tmp_path / "aligned"))
 
-    rmsd = results[str(mobile_path)]
+    rmsd = results[str(mobile_path)]["rmsd"]
     assert type(rmsd) is float  # not numpy.float64
     assert rmsd != 0.0
     assert rmsd == round(rmsd, 3)
+    identity = results[str(mobile_path)]["identity"]
+    assert type(identity) is float
+    assert identity == 1.0  # same residue types, only coordinates perturbed
 
 
 def test_chain_seq_and_ca_excludes_hetatm_with_standard_resname(tmp_path):
@@ -83,9 +87,10 @@ def test_matched_ca_pairs_identical_sequences():
     mob_seq = "ACDEFGHIK"
     ref_ca = list(range(len(ref_seq)))
     mob_ca = list(range(100, 100 + len(mob_seq)))
-    ref_pts, mob_pts = pa._matched_ca_pairs(ref_seq, ref_ca, mob_seq, mob_ca)
+    ref_pts, mob_pts, identity = pa._matched_ca_pairs(ref_seq, ref_ca, mob_seq, mob_ca)
     assert ref_pts == ref_ca
     assert mob_pts == mob_ca
+    assert identity == 1.0
 
 
 def test_matched_ca_pairs_with_gap():
@@ -93,11 +98,25 @@ def test_matched_ca_pairs_with_gap():
     mob_seq = "ACDEHIK"  # FG deleted
     ref_ca = list(range(len(ref_seq)))
     mob_ca = list(range(100, 100 + len(mob_seq)))
-    ref_pts, mob_pts = pa._matched_ca_pairs(ref_seq, ref_ca, mob_seq, mob_ca)
+    ref_pts, mob_pts, identity = pa._matched_ca_pairs(ref_seq, ref_ca, mob_seq, mob_ca)
     assert len(ref_pts) == len(mob_pts) == 7
     # the two deleted positions (F, G at ref indices 4,5) must not appear
     assert 4 not in ref_pts
     assert 5 not in ref_pts
+    # every remaining (gap-free) position is still an exact match
+    assert identity == 1.0
+
+
+def test_matched_ca_pairs_identity_excludes_gaps_counts_mismatches():
+    ref_seq = "ACDEFGHIK"
+    mob_seq = "ACDXFGHIK"  # one substitution (E->X), no length change/gap
+    ref_ca = list(range(len(ref_seq)))
+    mob_ca = list(range(100, 100 + len(mob_seq)))
+    ref_pts, mob_pts, identity = pa._matched_ca_pairs(ref_seq, ref_ca, mob_seq, mob_ca)
+    # no gap opened (mismatch is cheaper than a gap here), so all 9 positions match
+    assert len(ref_pts) == 9
+    # ...but only 8 of those 9 matched positions are an identical residue
+    assert identity == pytest.approx(8 / 9)
 
 
 def test_align_rejects_empty_structures():

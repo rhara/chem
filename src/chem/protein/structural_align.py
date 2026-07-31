@@ -52,7 +52,10 @@ def _chain_seq_and_ca(chain):
 
 def _matched_ca_pairs(ref_seq, ref_ca, mob_seq, mob_ca):
     """Sequence-align ref_seq/mob_seq and return the CA atoms at every matched
-    (non-gap) position, as parallel (ref_points, mob_points) lists.
+    (non-gap) position, as parallel (ref_points, mob_points) lists, plus the
+    fraction of those matched positions where the residue is identical
+    (gapped/unmatched positions -- residues with nothing on the other side --
+    aren't counted in either the numerator or the denominator).
     """
     aligner = PairwiseAligner()
     aligner.mode = "global"
@@ -63,11 +66,15 @@ def _matched_ca_pairs(ref_seq, ref_ca, mob_seq, mob_ca):
     alignment = aligner.align(ref_seq, mob_seq)[0]
 
     ref_pts, mob_pts = [], []
+    n_identical = 0
     for (r0, r1), (m0, m1) in zip(*alignment.aligned):
         for k in range(r1 - r0):
             ref_pts.append(ref_ca[r0 + k])
             mob_pts.append(mob_ca[m0 + k])
-    return ref_pts, mob_pts
+            if ref_seq[r0 + k] == mob_seq[m0 + k]:
+                n_identical += 1
+    identity = n_identical / len(ref_pts) if ref_pts else 0.0
+    return ref_pts, mob_pts, identity
 
 
 @logged
@@ -95,11 +102,15 @@ def align(structures, reference=None, chain=None, outdir="aligned"):
         heavy chain rather than its short light chain.
     outdir: destination directory; created if missing.
 
-    Returns {path: rmsd} over the sequence-matched CA atoms for every structure that
-    could be aligned (the reference maps to 0.0). rmsd is a plain float rounded to
-    3 decimal places. A structure with no usable chain, or too few residues in
-    common with the reference, is skipped with a warning (unless quiet) rather
-    than raising.
+    Returns {path: {"rmsd": ..., "identity": ...}} over the sequence-matched CA
+    atoms for every structure that could be aligned (the reference maps to
+    {"rmsd": 0.0, "identity": 1.0}). rmsd is in Angstroms; identity is the
+    fraction of matched (gap-free) positions with an identical residue -- gapped
+    positions (residues with nothing on the other side, e.g. a loop present in
+    one structure but not the other) don't count in either the numerator or the
+    denominator. Both are plain floats rounded to 3 decimal places. A structure
+    with no usable chain, or too few residues in common with the reference, is
+    skipped with a warning (unless quiet) rather than raising.
 
     Very large structures (e.g. cryo-EM assemblies with >26 chains or >99999 atoms)
     are not supported by the legacy PDB writer used here.
@@ -127,7 +138,7 @@ def align(structures, reference=None, chain=None, outdir="aligned"):
     ref_out_path = os.path.join(outdir, os.path.splitext(os.path.basename(ref_path))[0] + ".pdb")
     io.set_structure(ref_structure)
     io.save(ref_out_path)
-    results[ref_path] = 0.0
+    results[ref_path] = {"rmsd": 0.0, "identity": 1.0}
 
     for path in tqdm(
         structures, desc=f"aligning structures to {ref_path}", unit="structure", disable=is_quiet()
@@ -141,7 +152,7 @@ def align(structures, reference=None, chain=None, outdir="aligned"):
             mob_structure = _load_structure(path)
             mob_chain = _select_chain(next(mob_structure.get_models()), chain)
             mob_seq, mob_ca = _chain_seq_and_ca(mob_chain)
-            ref_pts, mob_pts = _matched_ca_pairs(ref_seq, ref_ca, mob_seq, mob_ca)
+            ref_pts, mob_pts, identity = _matched_ca_pairs(ref_seq, ref_ca, mob_seq, mob_ca)
             if len(ref_pts) < _MIN_MATCHED_RESIDUES:
                 raise ValueError(f"only {len(ref_pts)} residue(s) matched the reference sequence")
         except ValueError as e:
@@ -155,6 +166,6 @@ def align(structures, reference=None, chain=None, outdir="aligned"):
 
         io.set_structure(mob_structure)
         io.save(out_path)
-        results[path] = round(float(sup.rms), 3)
+        results[path] = {"rmsd": round(float(sup.rms), 3), "identity": round(identity, 3)}
 
     return results

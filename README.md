@@ -137,7 +137,8 @@ from chem import protein
 
 # Sequence-align and structurally superpose a set of same-target structures
 # (mix PDB/CIF, RCSB/AlphaFold freely). Writes one PDB file per input into outdir.
-rmsd = protein.align(
+# Returns {path: {"rmsd": ..., "identity": ...}}.
+align_results = protein.align(
     ["data/1PPB.cif", "data/1BTH.cif", "af_data/AF-P00734-F1.pdb"],
     reference=None,  # index into the list, or any path (need not be in the list);
                      # defaults to the first entry
@@ -169,8 +170,13 @@ the reference's frame. Every input, including the reference, is written out as a
 PDB file in `outdir` so each can be loaded and overlaid individually (e.g. one
 py3Dmol `addModel` call per file) -- the reference does not need to be a member of
 the input list; either way it's written to `outdir` exactly once. Returns
-`{path: rmsd}`; a structure with too few
-residues in common with the reference is skipped with a warning rather than raising.
+`{path: {"rmsd": ..., "identity": ...}}` -- `identity` is the fraction of
+matched (gap-free) sequence positions with an identical residue, so a
+mismatch still counts as "matched" (identity can be `< 1.0` even with no
+gaps at all), but a gapped position (e.g. a loop present in one structure but
+not the other) counts in neither the numerator nor the denominator. A
+structure with too few residues in common with the reference is skipped with
+a warning rather than raising.
 
 `find_pocket` runs [fpocket](https://github.com/Discngine/fpocket) on a PDB file
 (fpocket requires legacy PDB format, which is what `align` always writes) and picks

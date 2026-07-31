@@ -117,10 +117,17 @@ file in `outdir` (regardless of input format) — ready to be loaded and
 overlaid, e.g. one py3Dmol `addModel` call per file, or as input to
 `chem.protein.find_pocket`.
 
-Returns `{path: rmsd}` over the sequence-matched CA atoms for every structure
-that could be aligned (the reference maps to `0.0`). A structure with no
-usable chain, or too few residues in common with the reference, is skipped
-with a warning (unless quiet) rather than raising.
+Returns `{path: {"rmsd": ..., "identity": ...}}` over the sequence-matched CA
+atoms for every structure that could be aligned (the reference maps to
+`{"rmsd": 0.0, "identity": 1.0}`). `rmsd` is in Ångströms; `identity` is the
+fraction of matched (gap-free) positions with an identical residue — a
+mismatch (substitution) still counts as "matched" as long as no gap was
+opened there, so `identity` can be `< 1.0` even when every residue found a
+counterpart; gapped positions (e.g. a loop present in one structure but not
+the other) count in neither the numerator nor the denominator. Both are plain
+floats rounded to 3 decimal places. A structure with no usable chain, or too
+few residues in common with the reference, is skipped with a warning (unless
+quiet) rather than raising.
 
 Large structures (e.g. cryo-EM assemblies with >26 chains or >99999 atoms)
 are not supported by the legacy PDB writer used here.
