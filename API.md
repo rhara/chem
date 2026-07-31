@@ -107,9 +107,18 @@ then fetches and parses the JSON result.
 - `email` — contact email required by EBI's Job Dispatcher API (their
   abuse-prevention/contact policy — not stored or used for anything else).
 - `matrix` — substitution matrix, default `"BLOSUM62"`.
-- `expect` — E-value threshold (upper bound, inclusive), default `1e-10`.
-- `max_hits` — maximum number of hits to request, default `50` (also EBI's
-  own per-search cap).
+- `expect` — E-value threshold (upper bound, inclusive), default `1e-10` —
+  notably stricter than EBI's own tool default (`10`). Not a free-form
+  float: EBI's API only accepts one of a fixed set of values (`ValueError`
+  otherwise) — `1e-200`, `1e-100`, `1e-50`, `1e-10`, `1e-5`, `1e-4`, `1e-3`,
+  `1e-2`, `1e-1`, `1.0`, `10`, `100`, `1000`. Pick a larger one (e.g. `1e-3`,
+  `1.0`) to surface more distant/lower-identity homologs.
+- `max_hits` — maximum number of hits to request, default `50`. Also a fixed
+  EBI enum (`ValueError` otherwise) — `0`, `5`, `10`, `20`, `50`, `100`,
+  `150`, `200`, `250`, `500`, `750`, `1000`. EBI's own default is also `50`,
+  but a search often has more hits than that within the `expect` cutoff —
+  raise this to see further down the ranked list rather than just the
+  closest matches.
 - `poll_interval` — seconds between status polls while the job runs, default
   `10`.
 - `timeout` — seconds to wait for the job to reach a terminal state before

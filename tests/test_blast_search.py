@@ -64,6 +64,47 @@ def test_submit_posts_expected_params(monkeypatch):
     }
 
 
+def test_format_expect_uses_scientific_notation_not_plain_str():
+    # Regression: str(1e-3) == "0.001", which EBI's fixed-enum "exp" param
+    # rejects with a 400 -- only its own literal "1e-3" is accepted.
+    assert bs._format_expect(1e-3) == "1e-3"
+    assert bs._format_expect(1e-10) == "1e-10"
+    assert bs._format_expect(1.0) == "1.0"
+    assert bs._format_expect(10) == "10"
+
+
+def test_format_expect_rejects_unlisted_value():
+    with pytest.raises(ValueError):
+        bs._format_expect(0.0005)
+
+
+def test_format_max_hits_accepts_listed_value():
+    assert bs._format_max_hits(200) == "200"
+
+
+def test_format_max_hits_rejects_unlisted_value():
+    with pytest.raises(ValueError):
+        bs._format_max_hits(75)
+
+
+def test_submit_formats_expect_correctly(monkeypatch):
+    captured = {}
+
+    class FakeResponse:
+        text = "job-1"
+
+        def raise_for_status(self):
+            pass
+
+    monkeypatch.setattr(
+        bs.requests, "post", lambda url, data, timeout: (captured.update(data), FakeResponse())[1]
+    )
+
+    bs._submit("MSEQ", "pdb", "me@example.com", "BLOSUM62", 1e-3, 200, "t")
+    assert captured["exp"] == "1e-3"
+    assert captured["alignments"] == captured["scores"] == "200"
+
+
 def test_status_strips_response_text(monkeypatch):
     class FakeResponse:
         text = "  RUNNING  "

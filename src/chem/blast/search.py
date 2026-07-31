@@ -10,8 +10,50 @@ EBI_BLAST_API = "https://www.ebi.ac.uk/Tools/services/rest/ncbiblast"
 
 _TERMINAL_STATES = ("FINISHED", "FAILURE", "ERROR", "NOT_FOUND")
 
+# EBI's ncbiblast "exp" parameter isn't a free-form float: only these exact
+# strings are accepted (fetched from /parameterdetails/exp). plain str(expect)
+# breaks for several of them -- e.g. str(1e-3) == "0.001", which EBI rejects
+# with a 400 -- so every accepted value is looked up by its numeric value here
+# instead of reformatted on the fly.
+_EXPECT_VALUES = {
+    1e-200: "1e-200",
+    1e-100: "1e-100",
+    1e-50: "1e-50",
+    1e-10: "1e-10",
+    1e-5: "1e-5",
+    1e-4: "1e-4",
+    1e-3: "1e-3",
+    1e-2: "1e-2",
+    1e-1: "1e-1",
+    1.0: "1.0",
+    10: "10",
+    100: "100",
+    1000: "1000",
+}
+
+# EBI's "alignments"/"scores" parameters (both driven by max_hits here) are
+# likewise a fixed enum, not an arbitrary integer.
+_MAX_HITS_VALUES = (0, 5, 10, 20, 50, 100, 150, 200, 250, 500, 750, 1000)
+
+
+def _format_expect(expect):
+    try:
+        return _EXPECT_VALUES[expect]
+    except (KeyError, TypeError):
+        raise ValueError(
+            f"expect={expect!r} is not one of EBI's accepted E-value thresholds: "
+            f"{sorted(_EXPECT_VALUES, reverse=True)}"
+        ) from None
+
+
+def _format_max_hits(max_hits):
+    if max_hits not in _MAX_HITS_VALUES:
+        raise ValueError(f"max_hits={max_hits!r} is not one of EBI's accepted values: {_MAX_HITS_VALUES}")
+    return str(int(max_hits))
+
 
 def _submit(sequence, database, email, matrix, expect, max_hits, title):
+    hits_str = _format_max_hits(max_hits)
     resp = requests.post(
         f"{EBI_BLAST_API}/run",
         data={
@@ -21,9 +63,9 @@ def _submit(sequence, database, email, matrix, expect, max_hits, title):
             "sequence": sequence,
             "database": database,
             "matrix": matrix,
-            "exp": str(expect),
-            "alignments": str(max_hits),
-            "scores": str(max_hits),
+            "exp": _format_expect(expect),
+            "alignments": hits_str,
+            "scores": hits_str,
             "title": title,
         },
         timeout=30,
@@ -101,9 +143,18 @@ def blastp(
         else, and deliberately not passed to `chem.verbosity.logged`-style
         call logging, see below).
     matrix: substitution matrix, default "BLOSUM62".
-    expect: E-value threshold (upper bound, inclusive), default 1e-10.
-    max_hits: maximum number of hits to request, default 50 (also EBI's own
-        per-search cap).
+    expect: E-value threshold (upper bound, inclusive), default 1e-10 --
+        notably stricter than EBI's own tool default (10). Not a free-form
+        float: EBI's API only accepts one of a fixed set of values (raises
+        ValueError otherwise) -- 1e-200, 1e-100, 1e-50, 1e-10, 1e-5, 1e-4,
+        1e-3, 1e-2, 1e-1, 1.0, 10, 100, 1000. Pick a larger one (e.g. 1e-3,
+        1.0) to surface more distant/lower-identity homologs.
+    max_hits: maximum number of hits to request, default 50. Also a fixed
+        EBI enum (ValueError otherwise) -- 0, 5, 10, 20, 50, 100, 150, 200,
+        250, 500, 750, 1000. EBI's own default is also 50, but a search
+        often has more hits than that within the `expect` cutoff -- raise
+        this to see further down the ranked list rather than just the
+        closest matches.
     poll_interval: seconds between status polls while the job runs, default 10.
     timeout: seconds to wait for the job to reach a terminal state before
         raising TimeoutError, default 600.
