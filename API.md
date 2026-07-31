@@ -167,7 +167,7 @@ the ligand's atoms is selected. Returns a dict:
 - `info` — the full raw fpocket score dict for the selected pocket (all
   fields from `*_info.txt`, values converted to `float` where possible).
 
-### `protein.list_pockets(structure, outdir=None)`
+### `protein.list_pockets(structure, outdir=None, druggability_thres=0.1)`
 
 Run fpocket on a PDB file and return every pocket it detects — no reference
 ligand needed, unlike `find_pocket`. Useful for blind pocket detection on
@@ -176,11 +176,16 @@ every candidate binding site rather than just the one nearest a known ligand.
 
 - `structure` — path to a PDB file.
 - `outdir` — same as `find_pocket`'s.
+- `druggability_thres` — minimum `druggability_score` (inclusive) to keep.
+  fpocket routinely reports dozens of low-quality cavities with near-zero
+  scores on a typical structure; the default (`0.1`) drops those, along with
+  any pocket fpocket didn't assign a `druggability_score` to at all. Pass
+  `None` to keep every detected pocket, unfiltered.
 
-Returns a list of dicts, one per detected pocket, each shaped exactly like a
+Returns a list of dicts, one per kept pocket, each shaped exactly like a
 single `find_pocket` result (`pocket_id`/`score`/`druggability_score`/
 `volume`/`residues`/`spheres`/`info`), sorted by `druggability_score`
-descending (pockets fpocket didn't assign one to, if any, sort last).
+descending.
 
 ### `protein.SOLVENT_AND_IONS`
 

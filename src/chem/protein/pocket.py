@@ -301,7 +301,7 @@ def find_pocket(structure, ligand=None, outdir=None):
 
 
 @logged
-def list_pockets(structure, outdir=None):
+def list_pockets(structure, outdir=None, druggability_thres=0.1):
     """Run fpocket on `structure` and return every pocket it detects -- no
     reference ligand needed, unlike `find_pocket`. Useful for blind pocket
     detection on structures with no bound ligand at all, e.g. an AlphaFold
@@ -311,11 +311,15 @@ def list_pockets(structure, outdir=None):
     structure: path to a PDB file.
     outdir: optional directory to keep fpocket's full raw output (pockets/,
         *_info.txt, ...) in; if None, a temporary directory is used and discarded.
+    druggability_thres: minimum druggability_score (inclusive) to keep. fpocket
+        routinely reports dozens of low-quality cavities with near-zero scores
+        on a typical structure; the default (0.1) drops those, along with any
+        pocket fpocket didn't assign a druggability_score to at all. Pass
+        `None` to keep every detected pocket, unfiltered.
 
-    Returns a list of dicts, one per detected pocket, each shaped exactly like
-    a single `find_pocket` result (pocket_id, score, druggability_score,
-    volume, residues, spheres, info), sorted by druggability_score descending
-    (pockets fpocket didn't assign one to, if any, sort last).
+    Returns a list of dicts, one per kept pocket, each shaped exactly like a
+    single `find_pocket` result (pocket_id, score, druggability_score, volume,
+    residues, spheres, info), sorted by druggability_score descending.
     """
     cleanup = None
     if outdir is not None:
@@ -333,6 +337,12 @@ def list_pockets(structure, outdir=None):
             _pocket_result(pocket_id, atm_path, info_by_id[pocket_id])
             for pocket_id, atm_path in _pocket_atm_paths(os.path.join(out_dir, "pockets")).items()
         ]
+        if druggability_thres is not None:
+            results = [
+                r
+                for r in results
+                if r["druggability_score"] is not None and r["druggability_score"] >= druggability_thres
+            ]
         results.sort(key=lambda r: (r["druggability_score"] is None, -(r["druggability_score"] or 0)))
 
         if not is_quiet():

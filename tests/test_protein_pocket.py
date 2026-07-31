@@ -220,16 +220,39 @@ def fpocket_output(tmp_path):
     return str(out_dir)
 
 
-def test_list_pockets_returns_every_pocket_sorted_by_druggability(tmp_path, fpocket_output, monkeypatch):
+def test_list_pockets_returns_every_pocket_sorted_by_druggability_when_unfiltered(
+    tmp_path, fpocket_output, monkeypatch
+):
+    monkeypatch.setattr(pk, "_run_fpocket", lambda structure, workdir: (fpocket_output, "structure"))
+    dummy = tmp_path / "structure.pdb"
+    dummy.write_text("")
+
+    results = pk.list_pockets(str(dummy), druggability_thres=None)
+
+    assert [r["pocket_id"] for r in results] == [2, 1, 3]
+    assert results[0]["druggability_score"] == 0.9
+    assert results[-1]["druggability_score"] is None
+
+
+def test_list_pockets_default_drops_low_and_missing_druggability(tmp_path, fpocket_output, monkeypatch):
+    # Fixture: pocket 1 = 0.2, pocket 2 = 0.9, pocket 3 = no score at all.
     monkeypatch.setattr(pk, "_run_fpocket", lambda structure, workdir: (fpocket_output, "structure"))
     dummy = tmp_path / "structure.pdb"
     dummy.write_text("")
 
     results = pk.list_pockets(str(dummy))
 
-    assert [r["pocket_id"] for r in results] == [2, 1, 3]
-    assert results[0]["druggability_score"] == 0.9
-    assert results[-1]["druggability_score"] is None
+    assert [r["pocket_id"] for r in results] == [2, 1]
+
+
+def test_list_pockets_custom_druggability_thres(tmp_path, fpocket_output, monkeypatch):
+    monkeypatch.setattr(pk, "_run_fpocket", lambda structure, workdir: (fpocket_output, "structure"))
+    dummy = tmp_path / "structure.pdb"
+    dummy.write_text("")
+
+    results = pk.list_pockets(str(dummy), druggability_thres=0.5)
+
+    assert [r["pocket_id"] for r in results] == [2]
 
 
 def test_run_fpocket_missing_binary_raises_helpful_error(tmp_path, monkeypatch):

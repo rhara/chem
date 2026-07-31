@@ -70,20 +70,22 @@ protein.find_pocket(structure, ligand=None, outdir=None)
 
 ```python
 from chem import protein
-protein.list_pockets(structure, outdir=None)
+protein.list_pockets(structure, outdir=None, druggability_thres=0.1)
 ```
 
-AlphaFold予測構造のようにリガンドが一切結合していない構造に対して、`find_pocket`(リガンド近傍の1つだけを選ぶ)の代わりに、fpocketが検出した**すべての**候補ポケットを一覧で返す。
+AlphaFold予測構造のようにリガンドが一切結合していない構造に対して、`find_pocket`(リガンド近傍の1つだけを選ぶ)の代わりに、fpocketが検出した候補ポケットを一覧で返す。
 
 - `structure`: PDBファイルのパス(`find_pocket`と同様)
 - `outdir`: fpocketの生ログ出力を保持するディレクトリ。`None`なら一時ディレクトリを使い処理後に破棄する(`find_pocket`と同様)
-- 戻り値: `find_pocket`の戻り値と全く同じ形の辞書(`pocket_id`/`score`/`druggability_score`/`volume`/`residues`/`spheres`/`info`)のリスト。**`druggability_score`降順**でソートする(`druggability_score`が無い(`None`の)ポケットがもしあれば最後に回す)
+- `druggability_thres`: 保持する`druggability_score`の下限(inclusive)。fpocketは典型的な構造で数十個の低品質な空洞をほぼ0点で報告するため、デフォルト(`0.1`)でそれらと`druggability_score`が全く付与されなかったポケットを除外する。`None`を渡せばフィルタなしで全ポケットを返す
+- 戻り値: `find_pocket`の戻り値と全く同じ形の辞書(`pocket_id`/`score`/`druggability_score`/`volume`/`residues`/`spheres`/`info`)の、保持されたポケットのみのリスト。**`druggability_score`降順**でソートする
 
 ### アルゴリズム
 
 1. `find_pocket`と同じ`_run_fpocket`でfpocketを実行し、`{stem}_info.txt`を`_parse_info_txt`でパースする(リガンド解決は行わない)
 2. `pockets/pocket{N}_atm.pdb`をすべて(`_pocket_atm_paths`でid→パスの辞書として)走査し、各ポケットについて`find_pocket`と共通の`_pocket_result(pocket_id, atm_path, info)`ヘルパーで結果辞書を組み立てる(`find_pocket`もこのヘルパーを使うようリファクタリングする)
-3. `druggability_score`降順(`None`は最後)でソートして返す
+3. `druggability_thres`が`None`でなければ、`druggability_score`が`None`のポケット、および`druggability_thres`未満のポケットを除外する
+4. `druggability_score`降順(`druggability_thres=None`で`None`が残った場合は最後)でソートして返す
 
 ### `SOLVENT_AND_IONS`(自動検出で除外するHETコード、非網羅的)
 
@@ -108,4 +110,4 @@ SO4, PO4, GOL, EDO, PEG, PG4, 1PE, P6G, MPD, FMT, ACT, DMS, TRS, BME, EPE, HEPES
 ## 注意
 
 - このリポジトリはdd_*プロジェクト群、`~/lab/chembl`、`dd_chembl`とは無関係な独立プロジェクト。それらのコードやロジックを参照・流用しない
-- テストは`tests/test_protein_align.py`・`tests/test_protein_pocket.py`にネットワーク・外部バイナリ(fpocket)不要な範囲(シーケンスマッチングロジック、リガンド自動検出・HETコード判定・ファイル判定の分岐、ポケット選択の距離計算、`_info.txt`パーサ、fpocket未インストール時のエラーメッセージ、`_pocket_atm_paths`/`_pocket_result`の単体動作(`pocket{N}_vert.pqr`が存在する/しない両方のケース)、`_parse_pocket_spheres`が合成PQRテキストから`x`/`y`/`z`/`radius`を正しく取り出すこと、`list_pockets`を`_run_fpocket`を`monkeypatch`で偽の出力ディレクトリに差し替えて実行し全ポケットが`druggability_score`降順(値なしは最後)で返ること)のみ追加する。実際のBio.PDB構造アラインメントとfpocket実行は、簡易的な合成PDBテキスト(固定カラム位置で手書きしたATOM/HETATMレコード)を使ったオフラインテストと、実データでの手動実行確認(3PTB+BENでPocket 1が選ばれAsp189・Ser195が残基リストに含まれること、AlphaFold予測構造(リガンド無し)で`list_pockets`が複数候補を返し、そのうち`druggability_score >= 0.2`の3件を`spheres`経由でHTMLに書き出しブラウザで表示確認したところ、cartoon上にポケットごとに色分けされた充填体積として描画されることを確認済み)の組み合わせで検証する
+- テストは`tests/test_protein_align.py`・`tests/test_protein_pocket.py`にネットワーク・外部バイナリ(fpocket)不要な範囲(シーケンスマッチングロジック、リガンド自動検出・HETコード判定・ファイル判定の分岐、ポケット選択の距離計算、`_info.txt`パーサ、fpocket未インストール時のエラーメッセージ、`_pocket_atm_paths`/`_pocket_result`の単体動作(`pocket{N}_vert.pqr`が存在する/しない両方のケース)、`_parse_pocket_spheres`が合成PQRテキストから`x`/`y`/`z`/`radius`を正しく取り出すこと、`list_pockets`を`_run_fpocket`を`monkeypatch`で偽の出力ディレクトリに差し替えて実行し`druggability_thres=None`なら全ポケットが`druggability_score`降順(値なしは最後)で返ること・デフォルト(`0.1`)では値なし/閾値未満のポケットが除外されること・`druggability_thres`を明示指定すればその閾値で絞り込まれること)のみ追加する。実際のBio.PDB構造アラインメントとfpocket実行は、簡易的な合成PDBテキスト(固定カラム位置で手書きしたATOM/HETATMレコード)を使ったオフラインテストと、実データでの手動実行確認(3PTB+BENでPocket 1が選ばれAsp189・Ser195が残基リストに含まれること、AlphaFold予測構造(リガンド無し)で`list_pockets`が複数候補を返し、そのうち`druggability_score >= 0.2`の3件を`spheres`経由でHTMLに書き出しブラウザで表示確認したところ、cartoon上にポケットごとに色分けされた充填体積として描画されることを確認済み)の組み合わせで検証する

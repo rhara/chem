@@ -190,7 +190,10 @@ on the lining residues.
 `list_pockets` runs the same fpocket analysis but, instead of picking the one
 pocket nearest a ligand, returns every pocket fpocket detected -- for structures
 with no bound ligand to anchor on. Each entry is shaped exactly like a single
-`find_pocket` result, sorted by `druggability_score` descending.
+`find_pocket` result, sorted by `druggability_score` descending. fpocket routinely
+reports dozens of low-quality cavities on a typical structure, so `druggability_thres`
+(default `0.1`) drops any pocket scoring below it, or with no score at all;
+pass `None` to keep everything unfiltered.
 
 ## chem.ligand — extract a ligand and score its drug-likeness
 
