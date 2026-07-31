@@ -77,13 +77,42 @@ def _matched_ca_pairs(ref_seq, ref_ca, mob_seq, mob_ca):
     return ref_pts, mob_pts, identity
 
 
+def _best_matching_chain_alignment(model, ref_seq, ref_ca):
+    """Align every polymer chain in model against (ref_seq, ref_ca) and return
+    the (ref_pts, mob_pts, identity) for whichever has the most identical
+    matched residues (identity * matched count).
+
+    A plain "most residues" chain-size heuristic picks the wrong chain when the
+    structure also contains a larger bound partner protein -- e.g. thrombin's
+    real structure files sometimes include a co-crystallized serpin inhibitor
+    (a full ~350-400 residue fold) alongside thrombin's own ~250-residue heavy
+    chain, and gap-averse global alignment (open_gap_score=-10) will happily
+    "match" most of an unrelated chain's length at near-zero identity rather
+    than open gaps, so matched-count alone doesn't discriminate either --
+    identity is what actually tells the same-protein chain apart.
+    """
+    best = None  # (n_identical, ref_pts, mob_pts, identity)
+    for chain in model:
+        seq, ca = _chain_seq_and_ca(chain)
+        if not seq:
+            continue
+        ref_pts, mob_pts, identity = _matched_ca_pairs(ref_seq, ref_ca, seq, ca)
+        n_identical = identity * len(ref_pts)
+        if best is None or n_identical > best[0]:
+            best = (n_identical, ref_pts, mob_pts, identity)
+    if best is None:
+        raise ValueError("no chain with polymer residues found")
+    return best[1], best[2], best[3]
+
+
 @logged
 def align(structures, reference=None, chain=None, outdir="aligned"):
     """Sequence-align and structurally superpose a set of same-target structures.
 
-    For each non-reference structure: selects its primary polymer chain (or `chain`
-    if given), sequence-aligns it against the reference chain, and superposes the
-    whole structure -- Kabsch fit on the sequence-matched CA atoms, applied to every
+    For each non-reference structure: selects its chain -- `chain` if given,
+    otherwise whichever chain actually matches the reference best (see below) --
+    sequence-aligns it against the reference chain, and superposes the whole
+    structure -- Kabsch fit on the sequence-matched CA atoms, applied to every
     atom including ligands and waters -- onto the reference's coordinate frame.
     Every structure, including the reference itself, is written out as a PDB file in
     `outdir` (regardless of input format), ready to be loaded and overlaid, e.g. one
@@ -95,11 +124,23 @@ def align(structures, reference=None, chain=None, outdir="aligned"):
         `structures`, or a path. Defaults to structures[0]. The reference does not
         need to be a member of `structures`; either way it is written to `outdir`
         exactly once (it is skipped in the alignment loop if it also appears in
-        `structures`).
-    chain: optional chain id to use in every structure, overriding auto-selection.
-        Default: auto-select each structure's chain with the most standard amino
-        acid residues (its primary polymer chain) -- e.g. thrombin's catalytic
-        heavy chain rather than its short light chain.
+        `structures`). The reference's own chain is picked by size alone (its
+        primary polymer chain, the one with the most standard amino acid
+        residues) since there's nothing yet to compare it against -- pass an
+        unambiguous single-chain reference (e.g. an AlphaFold prediction) if in
+        doubt.
+    chain: optional chain id to use in every non-reference structure, overriding
+        auto-selection. Default: pick whichever chain has the most residues
+        identical to the reference at matched (gap-free) sequence positions --
+        not simply the chain with the most residues overall, since a structure
+        can contain a larger bound partner protein (e.g. thrombin co-crystallized
+        with a ~350-400-residue serpin inhibitor, next to its own ~250-residue
+        heavy chain) that a size-only heuristic would wrongly prefer. Gap-averse
+        global alignment (a single substitution is far cheaper than opening a
+        gap) will also happily align most of an unrelated chain's length at
+        near-zero identity rather than open gaps, so raw matched-position count
+        doesn't discriminate either -- identity is what actually distinguishes
+        the same-protein chain from an unrelated bound partner.
     outdir: destination directory; created if missing.
 
     Returns {path: {"rmsd": ..., "identity": ...}} over the sequence-matched CA
@@ -150,9 +191,16 @@ def align(structures, reference=None, chain=None, outdir="aligned"):
 
         try:
             mob_structure = _load_structure(path)
-            mob_chain = _select_chain(next(mob_structure.get_models()), chain)
-            mob_seq, mob_ca = _chain_seq_and_ca(mob_chain)
-            ref_pts, mob_pts, identity = _matched_ca_pairs(ref_seq, ref_ca, mob_seq, mob_ca)
+            mob_model = next(mob_structure.get_models())
+            if chain is not None:
+                mob_chain = _select_chain(mob_model, chain)
+                mob_seq, mob_ca = _chain_seq_and_ca(mob_chain)
+                ref_pts, mob_pts, identity = _matched_ca_pairs(ref_seq, ref_ca, mob_seq, mob_ca)
+            else:
+                # Reference-aware: picks whichever chain is actually the same
+                # protein as the reference, not just the largest chain in the
+                # file (see _best_matching_chain_alignment).
+                ref_pts, mob_pts, identity = _best_matching_chain_alignment(mob_model, ref_seq, ref_ca)
             if len(ref_pts) < _MIN_MATCHED_RESIDUES:
                 raise ValueError(f"only {len(ref_pts)} residue(s) matched the reference sequence")
         except ValueError as e:

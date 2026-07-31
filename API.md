@@ -99,13 +99,22 @@ Sequence-align and structurally superpose a set of same-target structures
 - `reference` — which structure to align everything onto: an index into
   `structures`, or a path. Defaults to `structures[0]`. Does not need to be a
   member of `structures`; either way it's written to `outdir` exactly once.
-- `chain` — optional chain id to use in every structure, overriding
-  auto-selection. Default: each structure's chain with the most standard
-  amino acid residues (its primary polymer chain — e.g. thrombin's catalytic
-  heavy chain rather than its short light chain). HETATM residues are excluded
-  even when their resname matches a standard amino acid, so a covalently-linked
-  peptidomimetic ligand sharing the protein's chain id (e.g. a D-amino-acid-
-  containing inhibitor) doesn't get pulled into the sequence.
+- `chain` — optional chain id to use in every non-reference structure,
+  overriding auto-selection. Default: whichever chain has the most residues
+  identical to the reference at matched (gap-free) sequence positions — not
+  simply the chain with the most residues overall, since a structure can
+  contain a larger bound partner protein (e.g. thrombin co-crystallized with
+  a serpin inhibitor next to its own, smaller heavy chain) that a size-only
+  heuristic would wrongly prefer; gap-averse global alignment will also
+  happily align most of an unrelated chain's length at near-zero identity, so
+  raw matched-position count doesn't discriminate either. The reference's own
+  chain is still picked by size alone (its primary polymer chain), since
+  there's nothing yet to compare it against — pass an unambiguous
+  single-chain reference (e.g. an AlphaFold prediction) if in doubt. HETATM
+  residues are excluded even when their resname matches a standard amino
+  acid, so a covalently-linked peptidomimetic ligand sharing the protein's
+  chain id (e.g. a D-amino-acid-containing inhibitor) doesn't get pulled into
+  the sequence.
 - `outdir` — destination directory; created if missing.
 
 For each non-reference structure, its selected chain is sequence-aligned

@@ -158,12 +158,16 @@ pocket = protein.find_pocket(
 pockets = protein.list_pockets("af_data/AF-P00734-F1.pdb")
 ```
 
-`align` selects each structure's primary polymer chain (the one with the most
-standard amino acid residues -- e.g. thrombin's catalytic heavy chain rather than
-its short light chain; pass `chain="A"` etc. to override; HETATM residues are
-excluded even when their resname matches a standard amino acid, so a covalently-
-linked peptidomimetic ligand sharing the protein's chain id doesn't get pulled
-into its sequence), sequence-aligns it
+`align` selects each non-reference structure's chain by whichever best matches the
+reference (most identical residues at gap-free matched positions) -- not simply the
+chain with the most residues, since a structure can contain a larger bound partner
+protein (e.g. thrombin co-crystallized with a serpin inhibitor) that a size-only
+heuristic would wrongly prefer (pass `chain="A"` etc. to override; the reference's
+own chain is still picked by size alone, so use an unambiguous single-chain
+reference, e.g. an AlphaFold prediction, if in doubt). HETATM residues are excluded
+even when their resname matches a standard amino acid, so a covalently-linked
+peptidomimetic ligand sharing the protein's chain id doesn't get pulled into its
+sequence. It then sequence-aligns the selected chain
 against the reference chain, and superposes the whole structure (Kabsch fit on the
 sequence-matched CA atoms, applied to every atom including ligands and waters) onto
 the reference's frame. Every input, including the reference, is written out as a

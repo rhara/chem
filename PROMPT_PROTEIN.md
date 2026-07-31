@@ -19,22 +19,23 @@ protein.align(structures, reference=None, chain=None, outdir="aligned")
 
 - `structures`: 同一ターゲットの構造ファイルパスのリスト(PDB/CIF混在可。`chem.rcsb`/`chem.alphafold`でダウンロードしたファイルをそのまま渡せる)
 - `reference`: アラインメントの基準構造。`structures`へのインデックス(int)またはパス文字列。省略時は`structures[0]`。**`structures`配列に含まれている必要はない** — 含まれていてもいなくても、`outdir`には常に1回だけ書き出される(含まれる場合はアラインメントループ側でスキップする)
-- `chain`: 各構造で使うチェーンIDを明示指定(省略時は下記の自動選択)
+- `chain`: 各非reference構造で使うチェーンIDを明示指定(省略時は下記の自動選択)。referenceの自身のチェーンにも適用される
 - `outdir`: 座標変換後の構造を書き出す先のディレクトリ(存在しなければ作成)
 - 戻り値: `{path: {"rmsd": ..., "identity": ...}}`(シーケンスマッチしたCA原子上のRMSDと配列一致度。reference自身は`{"rmsd": 0.0, "identity": 1.0}`)
 
 ### アルゴリズム
 
 1. `reference`を解決し、Bio.PDB(拡張子`.cif`/`.mmcif`なら`MMCIFParser`、それ以外は`PDBParser`)で読み込む
-2. 各構造について「主鎖(primary polymer chain)」を選択する:
-   - `chain`引数が指定されていればそのチェーンIDを使う(見つからなければ`ValueError`)
-   - 指定がなければ、標準アミノ酸残基を最も多く含むチェーンを自動選択する。**単純に「ファイル内最初のチェーン」を採用してはいけない** — 例えばトロンビンはL鎖(軽鎖、~36残基)がH鎖(重鎖、~259残基)より先に現れることがあり、「最初に見つかった一定長以上のチェーン」という閾値ベースの選択だと軽鎖を誤って選んでしまう。残基数最大のチェーンを選ぶことで正しくH鎖(触媒ドメイン)が選ばれることを確認済み
+2. referenceの「主鎖(primary polymer chain)」を選択する: `chain`引数が指定されていればそのチェーンID(見つからなければ`ValueError`)、なければ標準アミノ酸残基を最も多く含むチェーンを自動選択する(`_select_chain`。比較対象がreference自身しかないため、後述のmobile構造向けとは違いサイズだけで選ぶ)。**単純に「ファイル内最初のチェーン」を採用してはいけない** — 例えばトロンビンはL鎖(軽鎖、~36残基)がH鎖(重鎖、~259残基)より先に現れることがあり、「最初に見つかった一定長以上のチェーン」という閾値ベースの選択だと軽鎖を誤って選んでしまう
    - 「標準アミノ酸残基」の判定は`Bio.PDB.Polypeptide.is_aa(residue, standard=True)`**だけでは不十分**: `is_aa`はresnameのみを見ており、hetero flag(`residue.id[0]`)をチェックしない。共有結合したペプチド模倣リガンド(D-アミノ酸を含むペプチド性阻害剤など)が蛋白質と同じチェーンIDを使い、かつ標準アミノ酸名(例: `PRO`)をHETATMとして持つ場合、`is_aa`だけの判定だとリガンド側の残基を誤って蛋白質配列に取り込んでしまう。実データ(トロンビン+ペプチド性阻害剤複合体 `6YHG`、リガンド側の`PRO H 307`がHETATMとして紐づいていた)でこの誤りによりRMSDが約0.3Å→約1.9Åに悪化する不具合を発見・修正済み。`_is_polymer_residue(r) = r.id[0] == " " and is_aa(r, standard=True)`という追加のhetero flagチェックを`_select_chain`・`_chain_seq_and_ca`の両方に適用する
-3. 選択したチェーンから、CA原子を持つ標準アミノ酸残基(上記の`_is_polymer_residue`基準)のみを使って1文字シーケンスと対応するCA原子リストを作る
-4. `Bio.Align.PairwiseAligner`(`mode="global"`、`open_gap_score=-10`、`extend_gap_score=-0.5`、`match_score=2`、`mismatch_score=-1`)でreferenceシーケンスと各構造のシーケンスをグローバルアラインメントし、`alignment.aligned`からギャップのないマッチ位置ペアを取り出し、対応するCA原子ペアのリストを作る。このループで同時に、各マッチ位置についてreference側とmobile側のアミノ酸1文字が一致するかどうかも数え、「一致数 / マッチ位置数」を`identity`として返す(`_matched_ca_pairs`の戻り値は`(ref_pts, mob_pts, identity)`の3-tuple)。**注意**: ここでの「マッチ」はギャップを挟まない位置という意味であり、アミノ酸が同一という意味ではない — `open_gap_score=-10`が`mismatch_score=-1`よりずっと重いため、1残基だけ変異していてもアライナーはギャップを開くよりミスマッチのまま繋げる方を選ぶ。つまりギャップ(挿入・欠損)になった位置だけが`identity`の分母・分子どちらからも除外され、変異(置換)はギャップにならない限り分母には数えられるが分子には数えられない
-5. マッチしたCA原子ペアが3組未満なら(`_MIN_MATCHED_RESIDUES = 3`)、その構造はアラインメント不可としてスキップ(quiet時以外は`stderr`に警告を出し、処理は継続)
-6. `Bio.PDB.Superimposer`でマッチしたCA原子ペアに対してKabsch法によるフィッティングを行い、得られた回転・並進を**構造の全原子**(タンパク質だけでなくリガンド・水も含む)に適用する。これにより、align出力後もリガンドの相対位置が保たれ、後続の`find_pocket`にそのまま使える。`results[path] = {"rmsd": round(float(sup.rms), 3), "identity": round(identity, 3)}`
-7. `Bio.PDB.PDBIO`で、referenceも含めて各構造を`outdir`に`{入力ファイルのstem}.pdb`として書き出す(**入力がCIFでも常にPDB形式で出力する** — fpocketがPDB形式を要求するための一貫性)。referenceの書き出しはメインループの前に1回だけ行い、`structures`側のループでは`path == ref_path`のときスキップする(referenceが`structures`に含まれない場合でも正しく書き出される)
+3. `reference`のチェーンから、CA原子を持つ標準アミノ酸残基(上記の`_is_polymer_residue`基準)のみを使って1文字シーケンスと対応するCA原子リストを作る(`ref_seq`/`ref_ca`)
+4. 各非reference構造について、使うチェーンを選ぶ:
+   - `chain`引数が指定されていればそのチェーンID(`_select_chain`)をそのまま使い、`_matched_ca_pairs(ref_seq, ref_ca, mob_seq, mob_ca)`を1回呼ぶ
+   - 指定がなければ`_best_matching_chain_alignment(model, ref_seq, ref_ca)`を使う: モデル内の(標準アミノ酸残基を持つ)全チェーンそれぞれについて`_chain_seq_and_ca`→`_matched_ca_pairs`を実行し、`identity * マッチ位置数`(=一致した残基の実数)が最大のチェーンの`(ref_pts, mob_pts, identity)`を採用する。**なぜ「残基数最大のチェーン」ではダメか**: 実データ(トロンビン+Protein C Inhibitor複合体`3B9F`)で、セルピン阻害剤のチェーン(356残基)がトロンビン自身の重鎖(253残基)より残基数が多く、単純なサイズ比較だと誤って阻害剤側のチェーンを選んでしまう不具合を発見・修正済み。しかも「マッチ位置数(ギャップなし長)」で比較しても解決しない — `open_gap_score=-10`が`mismatch_score=-1`よりずっと重いため、無関係な配列同士でもアライナーはギャップを開かずミスマッチのまま繋げようとし、実際このケースでは阻害剤チェーンの342残基がギャップなしで"マッチ"扱いになった(トロンビン重鎖の253残基より多い)。一致度(identity)で見ると阻害剤チェーンは0.219、トロンビン重鎖は0.996と歴然の差があり、これが正しい判定基準になる
+5. (`_matched_ca_pairs`内)`Bio.Align.PairwiseAligner`(`mode="global"`、`open_gap_score=-10`、`extend_gap_score=-0.5`、`match_score=2`、`mismatch_score=-1`)でreferenceシーケンスと対象シーケンスをグローバルアラインメントし、`alignment.aligned`からギャップのないマッチ位置ペアを取り出し、対応するCA原子ペアのリストを作る。同時に、各マッチ位置についてreference側と対象側のアミノ酸1文字が一致するかどうかも数え、「一致数 / マッチ位置数」を`identity`として返す(戻り値は`(ref_pts, mob_pts, identity)`の3-tuple)。**注意**: ここでの「マッチ」はギャップを挟まない位置という意味であり、アミノ酸が同一という意味ではない。つまりギャップ(挿入・欠損)になった位置だけが`identity`の分母・分子どちらからも除外され、変異(置換)はギャップにならない限り分母には数えられるが分子には数えられない
+6. マッチしたCA原子ペアが3組未満なら(`_MIN_MATCHED_RESIDUES = 3`)、その構造はアラインメント不可としてスキップ(quiet時以外は`stderr`に警告を出し、処理は継続)
+7. `Bio.PDB.Superimposer`でマッチしたCA原子ペアに対してKabsch法によるフィッティングを行い、得られた回転・並進を**構造の全原子**(タンパク質だけでなくリガンド・水も含む)に適用する。これにより、align出力後もリガンドの相対位置が保たれ、後続の`find_pocket`にそのまま使える。`results[path] = {"rmsd": round(float(sup.rms), 3), "identity": round(identity, 3)}`
+8. `Bio.PDB.PDBIO`で、referenceも含めて各構造を`outdir`に`{入力ファイルのstem}.pdb`として書き出す(**入力がCIFでも常にPDB形式で出力する** — fpocketがPDB形式を要求するための一貫性)。referenceの書き出しはメインループの前に1回だけ行い、`structures`側のループでは`path == ref_path`のときスキップする(referenceが`structures`に含まれない場合でも正しく書き出される)
 
 ## chem.protein.find_pocket
 
@@ -110,4 +111,4 @@ SO4, PO4, GOL, EDO, PEG, PG4, 1PE, P6G, MPD, FMT, ACT, DMS, TRS, BME, EPE, HEPES
 ## 注意
 
 - このリポジトリはdd_*プロジェクト群、`~/lab/chembl`、`dd_chembl`とは無関係な独立プロジェクト。それらのコードやロジックを参照・流用しない
-- テストは`tests/test_protein_align.py`・`tests/test_protein_pocket.py`にネットワーク・外部バイナリ(fpocket)不要な範囲(シーケンスマッチングロジック、`_matched_ca_pairs`が返す`identity`について同一配列で`1.0`・ギャップを含む場合はギャップ位置を分母/分子どちらからも除外・ギャップなしミスマッチを含む場合は分母に数えて分子には数えないこと、`align()`の戻り値が`{"rmsd":..., "identity":...}`の形でreferenceは`{"rmsd": 0.0, "identity": 1.0}`になること、リガンド自動検出・HETコード判定・ファイル判定の分岐、ポケット選択の距離計算、`_info.txt`パーサ、fpocket未インストール時のエラーメッセージ、`_pocket_atm_paths`/`_pocket_result`の単体動作(`pocket{N}_vert.pqr`が存在する/しない両方のケース)、`_parse_pocket_spheres`が合成PQRテキストから`x`/`y`/`z`/`radius`を正しく取り出すこと、`list_pockets`を`_run_fpocket`を`monkeypatch`で偽の出力ディレクトリに差し替えて実行し`druggability_thres=None`なら全ポケットが`druggability_score`降順(値なしは最後)で返ること・デフォルト(`0.1`)では値なし/閾値未満のポケットが除外されること・`druggability_thres`を明示指定すればその閾値で絞り込まれること)のみ追加する。実際のBio.PDB構造アラインメントとfpocket実行は、簡易的な合成PDBテキスト(固定カラム位置で手書きしたATOM/HETATMレコード)を使ったオフラインテストと、実データでの手動実行確認(3PTB+BENでPocket 1が選ばれAsp189・Ser195が残基リストに含まれること、AlphaFold予測構造(リガンド無し)で`list_pockets`が複数候補を返し、そのうち`druggability_score >= 0.2`の3件を`spheres`経由でHTMLに書き出しブラウザで表示確認したところ、cartoon上にポケットごとに色分けされた充填体積として描画されることを確認済み)の組み合わせで検証する
+- テストは`tests/test_protein_align.py`・`tests/test_protein_pocket.py`にネットワーク・外部バイナリ(fpocket)不要な範囲(シーケンスマッチングロジック、`_matched_ca_pairs`が返す`identity`について同一配列で`1.0`・ギャップを含む場合はギャップ位置を分母/分子どちらからも除外・ギャップなしミスマッチを含む場合は分母に数えて分子には数えないこと、`align()`の戻り値が`{"rmsd":..., "identity":...}`の形でreferenceは`{"rmsd": 0.0, "identity": 1.0}`になること、`_best_matching_chain_alignment`が「マッチ位置数は多いが一致度が低い大きなチェーン」より「短くても一致度が高いチェーン」を選ぶこと(`3B9F`相当の合成データで再現)、`align()`をエンドツーエンドで実行してもサイズ最大の無関係なチェーンではなく正しいチェーンが選ばれ`identity`が高くなること、リガンド自動検出・HETコード判定・ファイル判定の分岐、ポケット選択の距離計算、`_info.txt`パーサ、fpocket未インストール時のエラーメッセージ、`_pocket_atm_paths`/`_pocket_result`の単体動作(`pocket{N}_vert.pqr`が存在する/しない両方のケース)、`_parse_pocket_spheres`が合成PQRテキストから`x`/`y`/`z`/`radius`を正しく取り出すこと、`list_pockets`を`_run_fpocket`を`monkeypatch`で偽の出力ディレクトリに差し替えて実行し`druggability_thres=None`なら全ポケットが`druggability_score`降順(値なしは最後)で返ること・デフォルト(`0.1`)では値なし/閾値未満のポケットが除外されること・`druggability_thres`を明示指定すればその閾値で絞り込まれること)のみ追加する。実際のBio.PDB構造アラインメントとfpocket実行は、簡易的な合成PDBテキスト(固定カラム位置で手書きしたATOM/HETATMレコード)を使ったオフラインテストと、実データでの手動実行確認(3PTB+BENでPocket 1が選ばれAsp189・Ser195が残基リストに含まれること、AlphaFold予測構造(リガンド無し)で`list_pockets`が複数候補を返し、そのうち`druggability_score >= 0.2`の3件を`spheres`経由でHTMLに書き出しブラウザで表示確認したところ、cartoon上にポケットごとに色分けされた充填体積として描画されることを確認済み)の組み合わせで検証する

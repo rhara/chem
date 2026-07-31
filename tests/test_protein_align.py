@@ -122,3 +122,58 @@ def test_matched_ca_pairs_identity_excludes_gaps_counts_mismatches():
 def test_align_rejects_empty_structures():
     with pytest.raises(ValueError):
         pa.align([])
+
+
+_THREE_LETTER = {
+    "A": "ALA", "G": "GLY", "L": "LEU", "V": "VAL", "P": "PRO",
+    "S": "SER", "T": "THR", "C": "CYS", "N": "ASN", "Q": "GLN",
+    "M": "MET", "I": "ILE", "F": "PHE", "W": "TRP", "H": "HIS",
+    "K": "LYS", "R": "ARG", "D": "ASP", "E": "GLU", "Y": "TYR",
+}
+
+
+def _write_chain(path, chain, one_letter_seq, x_offset=0.0, mode="w"):
+    lines = [
+        _atom_line(i + 1, "CA", _THREE_LETTER[c], chain, i + 1, i * 3.8 + x_offset, 0.0, 0.0)
+        for i, c in enumerate(one_letter_seq)
+    ]
+    with open(path, mode) as f:
+        f.write("\n".join(lines) + "\nEND\n" if mode == "w" else "\n" + "\n".join(lines) + "\nEND\n")
+
+
+def test_align_picks_matching_chain_over_larger_unrelated_chain(tmp_path):
+    # Reproduces a real bug seen with RCSB entry 3B9F (thrombin co-crystallized
+    # with protein C inhibitor, a serpin): a chain-size-only heuristic picked
+    # the larger bound partner protein (356 residues) over thrombin's own
+    # heavy chain (253 residues), giving ~0.22 identity instead of ~0.996.
+    ref_path = tmp_path / "ref.pdb"
+    _write_chain(ref_path, "A", "AGLVPSTCNQ")  # 10 residues
+
+    mobile_path = tmp_path / "mobile.pdb"
+    # Chain S ("small"): 5 residues, exact prefix match -- the true counterpart.
+    _write_chain(mobile_path, "S", "AGLVP", mode="w")
+    # Chain B ("big"): 10 residues (same length as ref, so no gap is needed),
+    # only one incidental match (index 3, both "V") -- an unrelated chain that
+    # a matched-length-only heuristic would wrongly prefer.
+    _write_chain(mobile_path, "B", "MIFVHKRDEY", mode="a")
+
+    results = pa.align([str(mobile_path)], reference=str(ref_path), outdir=str(tmp_path / "aligned"))
+
+    assert results[str(mobile_path)]["identity"] == 1.0
+    assert results[str(mobile_path)]["rmsd"] == pytest.approx(0.0, abs=1e-6)
+
+
+def test_best_matching_chain_alignment_prefers_identity_over_raw_matched_count(tmp_path):
+    ref_seq = "AGLVPSTCNQ"
+    ref_ca = list(range(len(ref_seq)))
+    small_seq, big_seq = "AGLVP", "MIFVHKRDEY"
+
+    path = tmp_path / "mobile.pdb"
+    _write_chain(path, "S", small_seq, mode="w")
+    _write_chain(path, "B", big_seq, mode="a")
+    model = next(pa._load_structure(str(path)).get_models())
+
+    ref_pts, mob_pts, identity = pa._best_matching_chain_alignment(model, ref_seq, ref_ca)
+
+    assert identity == 1.0
+    assert len(ref_pts) == len(small_seq)
