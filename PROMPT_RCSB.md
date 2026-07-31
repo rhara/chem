@@ -56,7 +56,7 @@ rcsb.download_structures(id, resolution_thres=2.0, outdir="data", filetype="cif"
 
 ## サンプルノートブック
 
-`notebooks/example_proteins.ipynb`に、`THRB_HUMAN`(トロンビン)を対象としたサンプルセルを追加する:
+`notebooks/alphafold_pocket_thrb_human.ipynb`に、`THRB_HUMAN`(トロンビン)を対象としたサンプルセルを追加する:
 1. `rcsb.download_structures("THRB_HUMAN", resolution_thres=1.2, outdir="data")`を実行(`from chem import rcsb`。デモを軽くするため分解能閾値は厳しめにして数件程度に絞る)
 2. ダウンロードされた`.cif`ファイル一覧を表示
 3. `py3Dmol`で最初の構造をカートゥーン表示

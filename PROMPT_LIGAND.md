@@ -57,7 +57,7 @@ ligand.qed(mol)                                             # 0.29
 
 ## サンプルノートブックの更新
 
-`notebooks/example_proteins.ipynb`の「RCSB PDB structures for thrombin」ダウンロードセルの直後(構造ビューアセルの前)に新セクションを追加する:
+`notebooks/alphafold_pocket_thrb_human.ipynb`の「RCSB PDB structures for thrombin」ダウンロードセルの直後(構造ビューアセルの前)に新セクションを追加する:
 
 - `chem.protein.SOLVENT_AND_IONS | {"NAG", "TYS", "MRD"}`を除外セットとして、`data/`の全PDBファイルに対し`list_ligand_instances`でリガンドの出現を列挙(同一コードの複数コピーも含め、出現ごとに1件)
 - 各インスタンスを`load_ligand(path, inst["code"], chain=inst["chain"], resnum=inst["resnum"], icode=inst["icode"])`で抽出し、失敗した場合は`try`/`except`で捕捉して理由付きでスキップリストに積む(結合次数テンプレートが一致しない共有結合ペプチド様リガンドの断片や、密度不完全な残基などが該当しうる)

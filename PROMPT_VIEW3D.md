@@ -4,7 +4,7 @@
 
 ## 背景
 
-`notebooks/example_proteins.ipynb`の「View one of the downloaded structures」セルには、カートゥーン表示+リガンドのstick表示を行うpy3Dmol用のローカル関数`render`がベタ書きされていた。これを`chem.view3d.render_protein`として切り出し、notebook側は
+`notebooks/alphafold_pocket_thrb_human.ipynb`の「View one of the downloaded structures」セルには、カートゥーン表示+リガンドのstick表示を行うpy3Dmol用のローカル関数`render`がベタ書きされていた。これを`chem.view3d.render_protein`として切り出し、notebook側は
 
 ```python
 from chem import view3d
@@ -63,7 +63,7 @@ view3d.render_protein(
 
 ## サンプルノートブックの更新
 
-`notebooks/example_proteins.ipynb`の2つのセルを`view3d.render_protein`呼び出しに置き換える:
+`notebooks/alphafold_pocket_thrb_human.ipynb`の2つのセルを`view3d.render_protein`呼び出しに置き換える:
 
 - 「View one of the downloaded structures」: ベタ書きのpy3Dmol呼び出しを`view3d.render_protein`呼び出しに置き換える。`ipywidgets.Output()`のコンテキスト内で使うが、`render_protein`は戻り値を持たず自身で表示まで完結するため、`.show()`は連鎖させず`view3d.render_protein(os.path.join("data", pdb_filename), exclude=_display_exclude)`とだけ呼ぶ(`coloring`は指定せず既定の`"spectrum"`のまま)。`_display_exclude = WATER`(水のみ除外。イオン・結晶化添加剤・糖鎖修飾・修飾残基などは全て表示する)はnotebook側にそのまま残す
 - 「View the predicted structure, colored by pLDDT confidence」: ベタ書きのpy3Dmol呼び出し(`setStyle({"cartoon": {"colorscheme": {"prop": "b", "gradient": "roygb", "min": 50, "max": 90}}})`)を`view3d.render_protein(os.path.join("af_data", pdb_files[0]), coloring="bfactor", width=600, height=600)`に置き換える(`bfactor_range`は既定の`(50, 90)`のままでpLDDTの慣習と一致するため省略可)
