@@ -43,7 +43,7 @@ hits = blast.blastp(sequence, database="pdb", email="you@example.com")
 
 ## サンプルノートブック
 
-`notebooks/cdk20_similar_targets.ipynb`の「BLASTP search via EBI Job Dispatcher」節を、素のPOST/ポーリングコードのベタ書きから`chem.blast.blastp`の呼び出しに置き換える。`email`は環境変数ではなくノートブック内に直接記述する(リポジトリ所有者からの明示指示)。
+`notebooks/cdk20_similar_targets.ipynb`の「BLASTP search via EBI Job Dispatcher」節を、素のPOST/ポーリングコードのベタ書きから`chem.blast.blastp`の呼び出しに置き換える。`email`はデフォルト値(`"user@example.com"`)を使い、ノートブック側では明示的に渡さない(以前は`EBI_EMAIL`変数をノートブック内に直接記述していたが、`blastp`にデフォルト値が実装されたためリポジトリ所有者の指示で削除した)。同ノートブックのヒット一覧表(「Top hits against PDB」「Human paralogs among the Swiss-Prot hits」)では、`evalue`列を`.style.format({"evalue": "{:.2e}"})`で科学的記数法表示にする — デフォルトの浮動小数点フォーマットだと、CDK-family触媒ドメインどうしの極めて有意なヒット(実際には`1e-80`前後)がすべて`0.000000`と表示され、あたかもe-valueが0であるかのように誤解を招くため。
 
 ## 注意
 
