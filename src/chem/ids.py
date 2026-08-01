@@ -27,9 +27,9 @@ def resolve_uniprot_accession(id_):
         f"{UNIPROT_API}/search",
         params={
             "query": f"{field}:{id_}",
-            "fields": "accession",
+            "fields": "accession,id",
             "format": "json",
-            "size": 1,
+            "size": 10,
         },
         timeout=30,
     )
@@ -37,6 +37,16 @@ def resolve_uniprot_accession(id_):
     results = resp.json().get("results", [])
     if not results:
         raise ValueError(f"could not resolve '{id_}' to a UniProt accession")
+    if field == "id":
+        # UniProt's "id" query is a relevance-ranked text search, not an exact-match
+        # lookup -- e.g. "id:CDK1_HUMAN" ranks O14519 (CDKA1_HUMAN, an unrelated
+        # protein) first, ahead of the actual exact match P06493 (CDK1_HUMAN) at
+        # position 2. Prefer a case-insensitive exact match on uniProtkbId among the
+        # fetched results over blindly trusting rank; only fall back to the top hit
+        # if none of them is an exact match (e.g. a deprecated/renamed mnemonic).
+        exact = next((r for r in results if r["uniProtkbId"].lower() == id_.lower()), None)
+        if exact is not None:
+            return exact["primaryAccession"]
     return results[0]["primaryAccession"]
 
 
