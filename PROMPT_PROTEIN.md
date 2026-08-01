@@ -1,14 +1,45 @@
-# chem.protein.align / chem.protein.find_pocket / chem.protein.list_pockets の再現プロンプト
+# chem.protein.summary / chem.protein.align / chem.protein.find_pocket / chem.protein.list_pockets の再現プロンプト
 
-`chem`リポジトリの`chem`パッケージ内に、構造解析用のサブパッケージ`protein`(`chem.protein`)を追加し、複数構造のシーケンス・3Dアラインメント(`align`)と、リガンド近傍のfpocketポケット・構成残基特定(`find_pocket`)、リガンドを持たない構造向けの全候補ポケット列挙(`list_pockets`)を実装するための指示。`chem.rcsb`・`chem.alphafold`でダウンロードした構造をそのまま入力にできることを想定する。
+`chem`リポジトリの`chem`パッケージ内に、構造解析用のサブパッケージ`protein`(`chem.protein`)を追加し、UniProtエントリのアノテーション取得(`summary`)、複数構造のシーケンス・3Dアラインメント(`align`)、リガンド近傍のfpocketポケット・構成残基特定(`find_pocket`)、リガンドを持たない構造向けの全候補ポケット列挙(`list_pockets`)を実装するための指示。`chem.rcsb`・`chem.alphafold`でダウンロードした構造をそのまま入力にできることを想定する。
 
 ## パッケージ構成
 
-- `src/chem/protein/__init__.py`: `from .structural_align import align` / `from .pocket import find_pocket, list_pockets` として再エクスポート
+- `src/chem/protein/__init__.py`: `from .annotation import summary` / `from .structural_align import align` / `from .pocket import find_pocket, list_pockets` として再エクスポート
+- `src/chem/protein/annotation.py`: `summary`の実装
 - `src/chem/protein/structural_align.py`: `align`の実装
 - `src/chem/protein/pocket.py`: `find_pocket`の実装
 
-**注意**: 実装ファイル名を公開関数名と同じにしない(例: `align.py`に`align`関数を置かない)。パッケージの`__init__.py`で`from .align import align`のように再エクスポートすると、`chem.protein`パッケージの`align`属性がサブモジュールからその関数へ上書きされてしまい、以降`import chem.protein.align`のようなドット区切りでのサブモジュールアクセスが(内部テストなどで)壊れる。既存の`chembl`/`rcsb`/`alphafold`サブパッケージが実装ファイルを常に`fetch.py`(公開関数名と別名)にしているのも同じ理由。
+**注意**: 実装ファイル名を公開関数名と同じにしない(例: `align.py`に`align`関数を置かない、`summary.py`に`summary`関数を置かない)。パッケージの`__init__.py`で`from .align import align`のように再エクスポートすると、`chem.protein`パッケージの`align`属性がサブモジュールからその関数へ上書きされてしまい、以降`import chem.protein.align`のようなドット区切りでのサブモジュールアクセスが(内部テストなどで)壊れる。既存の`chembl`/`rcsb`/`alphafold`サブパッケージが実装ファイルを常に`fetch.py`(公開関数名と別名)にしているのも同じ理由。
+
+## chem.protein.summary
+
+```python
+from chem import protein
+protein.summary(id)
+```
+
+`chem.rcsb`/`chem.alphafold`で構造をダウンロードしたり`chem.blast.blastp`でホモログを探したりする前段として、対象タンパク質そのものの素性を素早く確認するための、UniProtエントリのアノテーション取得関数。
+
+- `id`: UniProtアクセッション(例: `"Q8IZL9"`)またはエントリ名/mnemonic(例: `"CDK20_HUMAN"`)。`chem.ids.resolve_uniprot_accession`でアクセッションに解決してから使う(ChEMBL target idは受け付けない — 必要なら呼び出し側で`chem.ids.resolve_uniprot_accession_any`等を使って変換する)
+- 戻り値: 以下のキーを持つ`dict`(UniProtに該当データがない項目は`None`、`has_*`系は`False`になる。例外は投げない)
+  - `entry_name`, `accession`: UniProtのエントリ名(mnemonic)とアクセッション
+  - `protein_name`, `gene_name`(synonymsがあれば`"CDK20 (synonyms: CCRK, CDCH)"`のように付記), `organism`, `sequence_length`, `ec_number`
+  - `family`: `SIMILARITY`コメント(蛋白質ファミリー分類)
+  - `function`: `FUNCTION`コメント
+  - `subcellular_location`: `SUBCELLULAR LOCATION`コメントの各locationをカンマ結合
+  - `kinase_domain_range`: `description`に"kinase"(大文字小文字無視)を含む最初の`Domain`フィーチャーの`"{start}-{end}"`残基範囲(非キナーゼやドメイン未注釈のエントリでは`None`)
+  - `active_site_residue`: 最初の`Active site`フィーチャーの残基番号(未注釈なら`None`)
+  - `n_pdb_xrefs`: UniProtエントリ内の`PDB`クロスリファレンス数(RCSB Search APIによるライブな件数ではない点に注意 — 実際のPDB構造数が必要なら`chem.rcsb`側を使う)
+  - `has_alphafold_model`, `has_bindingdb_entry`: `AlphaFoldDB`/`BindingDB`クロスリファレンスの有無
+  - `chembl_target_id`: `ChEMBL`クロスリファレンスのid(なければ`None`)
+  - `pharos_development_level`: Pharosのtarget development level(`Tclin`/`Tchem`/`Tbio`/`Tdark`)に簡単な説明を付記した文字列(例: `"Tbio (biology characterized, no known drug/chemical probe)"`)。UniProtに`Pharos`クロスリファレンスがなければ`None`
+  - `protein_existence`, `annotation_score`: UniProt自身のエビデンスレベル・アノテーション充実度スコア
+
+### アルゴリズム
+
+1. `id`を`chem.ids.resolve_uniprot_accession`でUniProtアクセッションに解決する
+2. `https://rest.uniprot.org/uniprotkb/{accession}.json`をfetchする
+3. 上記の各プロパティをJSONの該当フィールド(`proteinDescription`/`genes`/`comments`/`features`/`uniProtKBCrossReferences`等)から抽出し、辞書にまとめて返す(抽出ロジックは`_extract_properties(entry)`という、ネットワークを叩かない純粋関数に分離する — テストではこちらに直接、手組みのJSON相当の`dict`を渡す)
 
 ## chem.protein.align
 
@@ -113,6 +144,8 @@ HOH, WAT, DOD
 - `gemmi`は既存環境に(他パッケージ経由で)入っているが、今回は使わずBio.PDBのみで実装する
 
 ## サンプルノートブック
+
+`notebooks/cdk20_similar_targets.ipynb`の「CDK20's own UniProt annotation」セクションのコードセルは、`chem.protein.summary("Q8IZL9")`(または`"CDK20_HUMAN"`)を呼び、戻り値の`dict`を`pandas.DataFrame(list(props.items()), columns=["Property", "Value"])`で表(`.style.hide(axis="index")`、`Value`列は`white-space: pre-wrap`で長文を折り返し)として表示するだけにする。
 
 `notebooks/alphafold_pocket_thrb_human.ipynb`のRCSBダウンロードセルの直後に、ダウンロードした複数のトロンビン構造をAlphaFold予測構造を参照にアラインする独立セクション(タイトルmd + コード。コードは`align()`実行と`align_df`(rmsd/identity列)の表示のみ)を置く。重ね書きpy3Dmolビューア(トグルボタンで表示構造を選ぶウィジェット)はさらに別の独立セクション(独自のH2タイトルmd + コード)として、アラインメントセクションの直後に続ける -- 1セルに両方を詰め込まない。fpocketのサンプルは別途、リガンド入り構造(例: トリプシン+ベンザミジン `3PTB`)で`find_pocket`を実行し、選ばれたポケットの残基をハイライト表示するセルを追加する。`list_pockets`のサンプルは、AlphaFold予測構造セクション(リガンドが存在しない)に以下3セルを追加する: (1) `pandas.DataFrame`で「pocket_id / score / druggability_score / volume / n_residues」の表として全候補ポケットを表示、(2) `druggability_score >= 0.2`の候補ポケットを、半透明cartoonの上にポケットごとに異なる色の構成残基stickでハイライトして可視化(色とpocket_id/druggability_scoreの凡例付き)、(3) 同じ候補ポケットを、構成残基のstickの代わりに`spheres`フィールド(fpocketのアルファ球)を`py3Dmol.addSphere`で球ごとに描画し、空洞を充填された体積として可視化(こちらもポケットごとに色分け・凡例付き)。既存セルは書き換えず、新規セルとして追記する。
 

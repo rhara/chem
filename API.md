@@ -139,6 +139,40 @@ on success.
 
 ## chem.protein
 
+### `protein.summary(id)`
+
+Fetch a UniProt entry — by accession (e.g. `"Q8IZL9"`) or entry
+name/mnemonic (e.g. `"CDK20_HUMAN"`), resolved via
+`chem.ids.resolve_uniprot_accession` — and return a flat `dict` of
+properties useful for drug-discovery target triage:
+
+- `entry_name`, `accession` — UniProt entry name (mnemonic) and accession.
+- `protein_name`, `gene_name` (with synonyms, if any), `organism`,
+  `sequence_length`, `ec_number`.
+- `family` — the `SIMILARITY` comment (protein family classification).
+- `function` — the `FUNCTION` comment.
+- `subcellular_location` — comma-joined `SUBCELLULAR LOCATION` values.
+- `kinase_domain_range` — `"{start}-{end}"` residue range of the first
+  `Domain` feature whose description mentions "kinase" (`None` for
+  non-kinases or entries without a domain annotation).
+- `active_site_residue` — residue number of the first `Active site`
+  feature (`None` if unannotated).
+- `n_pdb_xrefs` — count of `PDB` cross-references in the UniProt entry
+  (not RCSB's own search API — use `chem.rcsb` for a live/authoritative
+  count).
+- `has_alphafold_model`, `has_bindingdb_entry` — whether an `AlphaFoldDB` /
+  `BindingDB` cross-reference exists.
+- `chembl_target_id` — the `ChEMBL` cross-reference id, if any.
+- `pharos_development_level` — Pharos target development level plus a short
+  gloss, e.g. `"Tbio (biology characterized, no known drug/chemical
+  probe)"` (`Tclin`/`Tchem`/`Tbio`/`Tdark`; `None` if UniProt has no Pharos
+  cross-reference).
+- `protein_existence`, `annotation_score` — UniProt's own evidence-level and
+  annotation-completeness scores.
+
+Any field UniProt doesn't have data for comes back as `None` (or `False`
+for the `has_*` flags) rather than raising.
+
 ### `protein.align(structures, reference=None, chain=None, outdir="aligned")`
 
 Sequence-align and structurally superpose a set of same-target structures
