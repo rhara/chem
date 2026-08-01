@@ -170,3 +170,27 @@ def test_blastp_raises_runtime_error_on_job_failure(monkeypatch):
 
     with pytest.raises(RuntimeError):
         bs.blastp("MSEQ", "pdb", "me@example.com")
+
+
+def test_blastp_defaults_email_to_placeholder(monkeypatch):
+    seen = {}
+
+    def fake_submit(sequence, database, email, matrix, expect, max_hits, title):
+        seen["email"] = email
+        return "job-1"
+
+    monkeypatch.setattr(bs, "_submit", fake_submit)
+    monkeypatch.setattr(bs, "_wait", lambda job_id, poll_interval, timeout: "FINISHED")
+
+    class FakeResponse:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"hits": []}
+
+    monkeypatch.setattr(bs.requests, "get", lambda url, timeout: FakeResponse())
+
+    bs.blastp("MSEQ", "pdb")
+
+    assert seen["email"] == "user@example.com"

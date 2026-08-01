@@ -90,7 +90,7 @@ for which at least one file is present.
 
 ## chem.blast
 
-### `blast.blastp(sequence, database, email, matrix="BLOSUM62", expect=1e-10, max_hits=50, poll_interval=10, timeout=600, title="chem.blast")`
+### `blast.blastp(sequence, database, email="user@example.com", matrix="BLOSUM62", expect=1e-10, max_hits=50, poll_interval=10, timeout=600, title="chem.blast")`
 
 Run a protein BLAST (`blastp`) search via
 [EBI's Job Dispatcher REST API](https://www.ebi.ac.uk/jdispatcher/docs/webservices/)
@@ -106,6 +106,8 @@ then fetches and parses the JSON result.
   See the webservices docs above for the full list EBI hosts.
 - `email` — contact email required by EBI's Job Dispatcher API (their
   abuse-prevention/contact policy — not stored or used for anything else).
+  Defaults to the placeholder `"user@example.com"`; pass your own if you're
+  making many calls.
 - `matrix` — substitution matrix, default `"BLOSUM62"`.
 - `expect` — E-value threshold (upper bound, inclusive), default `1e-10` —
   notably stricter than EBI's own tool default (`10`). Not a free-form

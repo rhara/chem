@@ -117,7 +117,7 @@ def _parse_hits(result_json):
 def blastp(
     sequence,
     database,
-    email,
+    email="user@example.com",
     matrix="BLOSUM62",
     expect=1e-10,
     max_hits=50,
@@ -141,7 +141,8 @@ def blastp(
     email: contact email required by EBI's Job Dispatcher API (their
         abuse-prevention/contact policy -- not stored or used for anything
         else, and deliberately not passed to `chem.verbosity.logged`-style
-        call logging, see below).
+        call logging, see below). Defaults to the placeholder
+        "user@example.com"; pass your own if you're making many calls.
     matrix: substitution matrix, default "BLOSUM62".
     expect: E-value threshold (upper bound, inclusive), default 1e-10 --
         notably stricter than EBI's own tool default (10). Not a free-form

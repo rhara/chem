@@ -13,7 +13,7 @@ hits = blast.blastp(sequence, database="pdb", email="you@example.com")
 
 - `sequence`: 検索する蛋白質配列(プレーン配列でもFASTA形式でもよい。EBIのAPIはどちらも受け付ける)
 - `database`: 検索対象のEBIホストデータベース名(例: `"pdb"` — PDBの全チェーン、ヒットはチェーン単位、例`"1ABC_A"`。`"uniprotkb_swissprot"` — レビュー済みUniProtエントリ、蛋白質単位で1ヒット)
-- `email`: EBI Job Dispatcher APIが要求する連絡先メールアドレス(必須引数、デフォルト値なし)
+- `email`: EBI Job Dispatcher APIが要求する連絡先メールアドレス。デフォルト`"user@example.com"`(プレースホルダー。多数呼び出す場合は自分のメールアドレスを渡すこと)
 - `matrix`: 置換行列。デフォルト`"BLOSUM62"`
 - `expect`: E-value閾値(この値以下、inclusive)。デフォルト`1e-10`
 - `max_hits`: 取得する最大ヒット数。デフォルト`50`(EBI側の1検索あたりの上限でもある)
