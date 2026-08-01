@@ -174,6 +174,18 @@ triage:
 Any field UniProt doesn't have data for comes back as `None` (or `False`
 for the `has_*` flags) rather than raising.
 
+### `protein.get_fasta(id, email="user@example.com")`
+
+Fetch a UniProt entry's sequence as a FASTA string. `id` accepts the same
+three forms as `protein.summary` — UniProt accession, entry name/mnemonic,
+or ChEMBL target id — resolved the same way
+(`chem.ids.resolve_uniprot_accession_any`).
+
+`email` isn't required by UniProt's REST API, but is sent as a contact
+address in the request's `User-Agent` header per [UniProt's own API usage
+guidelines](https://www.uniprot.org/help/api); pass your own if you're
+making many calls.
+
 ### `protein.align(structures, reference=None, chain=None, outdir="aligned")`
 
 Sequence-align and structurally superpose a set of same-target structures

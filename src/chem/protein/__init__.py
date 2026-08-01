@@ -1,4 +1,4 @@
-from .annotation import summary
+from .annotation import get_fasta, summary
 from .pocket import SOLVENT_AND_IONS, WATER, find_pocket, list_pockets
 from .structural_align import align
 

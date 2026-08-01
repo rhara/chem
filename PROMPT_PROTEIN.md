@@ -1,11 +1,11 @@
-# chem.protein.summary / chem.protein.align / chem.protein.find_pocket / chem.protein.list_pockets の再現プロンプト
+# chem.protein.summary / chem.protein.get_fasta / chem.protein.align / chem.protein.find_pocket / chem.protein.list_pockets の再現プロンプト
 
-`chem`リポジトリの`chem`パッケージ内に、構造解析用のサブパッケージ`protein`(`chem.protein`)を追加し、UniProtエントリのアノテーション取得(`summary`)、複数構造のシーケンス・3Dアラインメント(`align`)、リガンド近傍のfpocketポケット・構成残基特定(`find_pocket`)、リガンドを持たない構造向けの全候補ポケット列挙(`list_pockets`)を実装するための指示。`chem.rcsb`・`chem.alphafold`でダウンロードした構造をそのまま入力にできることを想定する。
+`chem`リポジトリの`chem`パッケージ内に、構造解析用のサブパッケージ`protein`(`chem.protein`)を追加し、UniProtエントリのアノテーション取得(`summary`)とFASTA配列取得(`get_fasta`)、複数構造のシーケンス・3Dアラインメント(`align`)、リガンド近傍のfpocketポケット・構成残基特定(`find_pocket`)、リガンドを持たない構造向けの全候補ポケット列挙(`list_pockets`)を実装するための指示。`chem.rcsb`・`chem.alphafold`でダウンロードした構造をそのまま入力にできることを想定する。
 
 ## パッケージ構成
 
-- `src/chem/protein/__init__.py`: `from .annotation import summary` / `from .structural_align import align` / `from .pocket import find_pocket, list_pockets` として再エクスポート
-- `src/chem/protein/annotation.py`: `summary`の実装
+- `src/chem/protein/__init__.py`: `from .annotation import get_fasta, summary` / `from .structural_align import align` / `from .pocket import find_pocket, list_pockets` として再エクスポート
+- `src/chem/protein/annotation.py`: `summary`・`get_fasta`の実装
 - `src/chem/protein/structural_align.py`: `align`の実装
 - `src/chem/protein/pocket.py`: `find_pocket`の実装
 
@@ -40,6 +40,19 @@ protein.summary(id)
 1. `id`を`chem.ids.resolve_uniprot_accession_any`でUniProtアクセッションに解決する(ChEMBL target id/UniProtアクセッション/エントリ名のいずれも受け付ける)
 2. `https://rest.uniprot.org/uniprotkb/{accession}.json`をfetchする
 3. 上記の各プロパティをJSONの該当フィールド(`proteinDescription`/`genes`/`comments`/`features`/`uniProtKBCrossReferences`等)から抽出し、辞書にまとめて返す(抽出ロジックは`_extract_properties(entry)`という、ネットワークを叩かない純粋関数に分離する — テストではこちらに直接、手組みのJSON相当の`dict`を渡す)
+
+## chem.protein.get_fasta
+
+```python
+from chem import protein
+protein.get_fasta(id, email="user@example.com")
+```
+
+UniProtエントリの配列をFASTA文字列として取得する。`summary`と同じくID解決を共有する軽量な関数。
+
+- `id`: `summary`と同じ3形式(UniProtアクセッション/エントリ名/ChEMBL target id)を受け付ける
+- `email`: 省略可能。UniProt REST APIは必須にしていないが、[UniProt自身のAPI利用ガイドライン](https://www.uniprot.org/help/api)がリクエストの`User-Agent`ヘッダーに連絡先メールアドレスを含めることを推奨しているため、`User-Agent: chem/{chem.__version__} ({email})`として送る。デフォルトは`"user@example.com"`のプレースホルダー
+- 戻り値: `https://rest.uniprot.org/uniprotkb/{accession}.fasta`のレスポンステキストそのまま(FASTA形式の文字列)
 
 ## chem.protein.align
 
@@ -145,7 +158,7 @@ HOH, WAT, DOD
 
 ## サンプルノートブック
 
-`notebooks/cdk20_similar_targets.ipynb`の「CDK20's own UniProt annotation」セクションのコードセルは、`chem.protein.summary("Q8IZL9")`(または`"CDK20_HUMAN"`)を呼び、戻り値の`dict`を`pandas.DataFrame(list(props.items()), columns=["Property", "Value"])`で表(`.style.hide(axis="index")`、`Value`列は`white-space: pre-wrap`で長文を折り返し)として表示するだけにする。
+`notebooks/cdk20_similar_targets.ipynb`の「CDK20's own UniProt annotation」セクションのコードセルは、`chem.protein.summary("Q8IZL9")`(または`"CDK20_HUMAN"`)を呼び、戻り値の`dict`を`pandas.DataFrame(list(props.items()), columns=["Property", "Value"])`で表(`.style.hide(axis="index")`、`Value`列は`white-space: pre-wrap`で長文を折り返し)として表示するだけにする。同ノートブックのBLASTPセクション直前、配列を取得するセルは`requests.get(".../Q8IZL9.fasta")`の代わりに`chem.protein.get_fasta("Q8IZL9", email=EBI_EMAIL)`を使う(`EBI_EMAIL`はそのセルの直前でEBI Job Dispatcher用に定義済みのものをそのまま流用する)。
 
 `notebooks/alphafold_pocket_thrb_human.ipynb`のRCSBダウンロードセルの直後に、ダウンロードした複数のトロンビン構造をAlphaFold予測構造を参照にアラインする独立セクション(タイトルmd + コード。コードは`align()`実行と`align_df`(rmsd/identity列)の表示のみ)を置く。重ね書きpy3Dmolビューア(トグルボタンで表示構造を選ぶウィジェット)はさらに別の独立セクション(独自のH2タイトルmd + コード)として、アラインメントセクションの直後に続ける -- 1セルに両方を詰め込まない。fpocketのサンプルは別途、リガンド入り構造(例: トリプシン+ベンザミジン `3PTB`)で`find_pocket`を実行し、選ばれたポケットの残基をハイライト表示するセルを追加する。`list_pockets`のサンプルは、AlphaFold予測構造セクション(リガンドが存在しない)に以下3セルを追加する: (1) `pandas.DataFrame`で「pocket_id / score / druggability_score / volume / n_residues」の表として全候補ポケットを表示、(2) `druggability_score >= 0.2`の候補ポケットを、半透明cartoonの上にポケットごとに異なる色の構成残基stickでハイライトして可視化(色とpocket_id/druggability_scoreの凡例付き)、(3) 同じ候補ポケットを、構成残基のstickの代わりに`spheres`フィールド(fpocketのアルファ球)を`py3Dmol.addSphere`で球ごとに描画し、空洞を充填された体積として可視化(こちらもポケットごとに色分け・凡例付き)。既存セルは書き換えず、新規セルとして追記する。
 

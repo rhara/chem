@@ -1,5 +1,6 @@
 import requests
 
+from .. import __version__
 from ..ids import resolve_uniprot_accession_any
 
 UNIPROT_API = "https://rest.uniprot.org/uniprotkb"
@@ -101,3 +102,19 @@ def summary(id_):
     resp = requests.get(f"{UNIPROT_API}/{accession}.json", timeout=30)
     resp.raise_for_status()
     return _extract_properties(resp.json())
+
+
+def get_fasta(id_, email="user@example.com"):
+    """Fetch a UniProt entry's sequence as a FASTA string. `id_` accepts a UniProt
+    accession (e.g. "Q8IZL9"), entry name/mnemonic (e.g. "CDK20_HUMAN"), or ChEMBL
+    target id (e.g. "CHEMBL3559690") -- same resolution as `summary`.
+
+    `email` isn't required by UniProt's REST API, but is sent as a contact address
+    in the request's `User-Agent` header per UniProt's own API usage guidelines
+    (https://www.uniprot.org/help/api); pass your own if making many calls.
+    """
+    accession = resolve_uniprot_accession_any(id_)
+    headers = {"User-Agent": f"chem/{__version__} ({email})"}
+    resp = requests.get(f"{UNIPROT_API}/{accession}.fasta", headers=headers, timeout=30)
+    resp.raise_for_status()
+    return resp.text

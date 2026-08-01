@@ -134,3 +134,52 @@ def test_summary_accepts_a_chembl_target_id(monkeypatch):
 
     assert seen["resolved_with"] == "CHEMBL3559690"
     assert props["accession"] == "Q8IZL9"
+
+
+_FAKE_FASTA = ">sp|Q8IZL9|CDK20_HUMAN Cyclin-dependent kinase 20\nMDQYCILGRIG\n"
+
+
+def test_get_fasta_resolves_id_and_fetches_uniprot_fasta(monkeypatch):
+    seen = {}
+
+    def fake_resolve(id_):
+        seen["resolved_with"] = id_
+        return "Q8IZL9"
+
+    class FakeResponse:
+        text = _FAKE_FASTA
+
+        def raise_for_status(self):
+            pass
+
+    def fake_get(url, headers, timeout):
+        seen["url"] = url
+        seen["headers"] = headers
+        return FakeResponse()
+
+    monkeypatch.setattr(ann, "resolve_uniprot_accession_any", fake_resolve)
+    monkeypatch.setattr(ann.requests, "get", fake_get)
+
+    fasta = ann.get_fasta("CDK20_HUMAN")
+
+    assert seen["resolved_with"] == "CDK20_HUMAN"
+    assert seen["url"] == f"{ann.UNIPROT_API}/Q8IZL9.fasta"
+    assert "user@example.com" in seen["headers"]["User-Agent"]
+    assert fasta == _FAKE_FASTA
+
+
+def test_get_fasta_accepts_a_chembl_target_id_and_custom_email(monkeypatch):
+    seen = {}
+
+    monkeypatch.setattr(ann, "resolve_uniprot_accession_any", lambda id_: "Q8IZL9")
+
+    def fake_get(url, headers, timeout):
+        seen["headers"] = headers
+        return type("R", (), {"text": _FAKE_FASTA, "raise_for_status": lambda self: None})()
+
+    monkeypatch.setattr(ann.requests, "get", fake_get)
+
+    fasta = ann.get_fasta("CHEMBL3559690", email="me@example.org")
+
+    assert "me@example.org" in seen["headers"]["User-Agent"]
+    assert fasta == _FAKE_FASTA
