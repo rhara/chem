@@ -20,7 +20,7 @@ protein.summary(id)
 
 `chem.rcsb`/`chem.alphafold`で構造をダウンロードしたり`chem.blast.blastp`でホモログを探したりする前段として、対象タンパク質そのものの素性を素早く確認するための、UniProtエントリのアノテーション取得関数。
 
-- `id`: UniProtアクセッション(例: `"Q8IZL9"`)またはエントリ名/mnemonic(例: `"CDK20_HUMAN"`)。`chem.ids.resolve_uniprot_accession`でアクセッションに解決してから使う(ChEMBL target idは受け付けない — 必要なら呼び出し側で`chem.ids.resolve_uniprot_accession_any`等を使って変換する)
+- `id`: UniProtアクセッション(例: `"Q8IZL9"`)、エントリ名/mnemonic(例: `"CDK20_HUMAN"`)、またはChEMBL target id(例: `"CHEMBL3559690"`)。`chem.ids.resolve_uniprot_accession_any`でUniProtアクセッションに解決してから使う
 - 戻り値: 以下のキーを持つ`dict`(UniProtに該当データがない項目は`None`、`has_*`系は`False`になる。例外は投げない)
   - `entry_name`, `accession`: UniProtのエントリ名(mnemonic)とアクセッション
   - `protein_name`, `gene_name`(synonymsがあれば`"CDK20 (synonyms: CCRK, CDCH)"`のように付記), `organism`, `sequence_length`, `ec_number`
@@ -37,7 +37,7 @@ protein.summary(id)
 
 ### アルゴリズム
 
-1. `id`を`chem.ids.resolve_uniprot_accession`でUniProtアクセッションに解決する
+1. `id`を`chem.ids.resolve_uniprot_accession_any`でUniProtアクセッションに解決する(ChEMBL target id/UniProtアクセッション/エントリ名のいずれも受け付ける)
 2. `https://rest.uniprot.org/uniprotkb/{accession}.json`をfetchする
 3. 上記の各プロパティをJSONの該当フィールド(`proteinDescription`/`genes`/`comments`/`features`/`uniProtKBCrossReferences`等)から抽出し、辞書にまとめて返す(抽出ロジックは`_extract_properties(entry)`という、ネットワークを叩かない純粋関数に分離する — テストではこちらに直接、手組みのJSON相当の`dict`を渡す)
 

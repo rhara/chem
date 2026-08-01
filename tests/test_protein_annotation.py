@@ -102,7 +102,7 @@ def test_summary_resolves_id_and_fetches_uniprot_json(monkeypatch):
         seen["url"] = url
         return FakeResponse()
 
-    monkeypatch.setattr(ann, "resolve_uniprot_accession", fake_resolve)
+    monkeypatch.setattr(ann, "resolve_uniprot_accession_any", fake_resolve)
     monkeypatch.setattr(ann.requests, "get", fake_get)
 
     props = ann.summary("CDK20_HUMAN")
@@ -110,4 +110,27 @@ def test_summary_resolves_id_and_fetches_uniprot_json(monkeypatch):
     assert seen["resolved_with"] == "CDK20_HUMAN"
     assert seen["url"] == f"{ann.UNIPROT_API}/Q8IZL9.json"
     assert props["entry_name"] == "CDK20_HUMAN"
+    assert props["accession"] == "Q8IZL9"
+
+
+def test_summary_accepts_a_chembl_target_id(monkeypatch):
+    seen = {}
+
+    def fake_resolve(id_):
+        seen["resolved_with"] = id_
+        return "Q8IZL9"
+
+    class FakeResponse:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return _FAKE_ENTRY
+
+    monkeypatch.setattr(ann, "resolve_uniprot_accession_any", fake_resolve)
+    monkeypatch.setattr(ann.requests, "get", lambda url, timeout: FakeResponse())
+
+    props = ann.summary("CHEMBL3559690")
+
+    assert seen["resolved_with"] == "CHEMBL3559690"
     assert props["accession"] == "Q8IZL9"

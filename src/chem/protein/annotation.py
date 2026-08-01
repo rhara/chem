@@ -1,6 +1,6 @@
 import requests
 
-from ..ids import resolve_uniprot_accession
+from ..ids import resolve_uniprot_accession_any
 
 UNIPROT_API = "https://rest.uniprot.org/uniprotkb"
 
@@ -88,15 +88,16 @@ def _extract_properties(entry):
 
 
 def summary(id_):
-    """Fetch a UniProt entry (by accession, e.g. "Q8IZL9", or entry name/mnemonic,
-    e.g. "CDK20_HUMAN") and return a dict of properties useful for drug-discovery
-    triage: identifiers (entry_name, accession), function/family/organism/localization,
-    kinase domain range and catalytic active site residue (when annotated), and
-    cross-references signaling data availability -- PDB structure count, whether an
-    AlphaFold model or BindingDB entry exists, the ChEMBL target id, and the Pharos
-    target development level (Tclin/Tchem/Tbio/Tdark, i.e. how druggable it already is).
+    """Fetch a UniProt entry (by accession, e.g. "Q8IZL9"; entry name/mnemonic,
+    e.g. "CDK20_HUMAN"; or ChEMBL target id, e.g. "CHEMBL3559690") and return a
+    dict of properties useful for drug-discovery triage: identifiers (entry_name,
+    accession), function/family/organism/localization, kinase domain range and
+    catalytic active site residue (when annotated), and cross-references signaling
+    data availability -- PDB structure count, whether an AlphaFold model or
+    BindingDB entry exists, the ChEMBL target id, and the Pharos target
+    development level (Tclin/Tchem/Tbio/Tdark, i.e. how druggable it already is).
     """
-    accession = resolve_uniprot_accession(id_)
+    accession = resolve_uniprot_accession_any(id_)
     resp = requests.get(f"{UNIPROT_API}/{accession}.json", timeout=30)
     resp.raise_for_status()
     return _extract_properties(resp.json())

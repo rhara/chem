@@ -141,10 +141,11 @@ on success.
 
 ### `protein.summary(id)`
 
-Fetch a UniProt entry — by accession (e.g. `"Q8IZL9"`) or entry
-name/mnemonic (e.g. `"CDK20_HUMAN"`), resolved via
-`chem.ids.resolve_uniprot_accession` — and return a flat `dict` of
-properties useful for drug-discovery target triage:
+Fetch a UniProt entry — by accession (e.g. `"Q8IZL9"`), entry
+name/mnemonic (e.g. `"CDK20_HUMAN"`), or ChEMBL target id (e.g.
+`"CHEMBL3559690"`), resolved via `chem.ids.resolve_uniprot_accession_any`
+— and return a flat `dict` of properties useful for drug-discovery target
+triage:
 
 - `entry_name`, `accession` — UniProt entry name (mnemonic) and accession.
 - `protein_name`, `gene_name` (with synonyms, if any), `organism`,
