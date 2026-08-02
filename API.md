@@ -239,6 +239,30 @@ quiet) rather than raising.
 Large structures (e.g. cryo-EM assemblies with >26 chains or >99999 atoms)
 are not supported by the legacy PDB writer used here.
 
+### `protein.identity_matrix(structures, chain=None)`
+
+Pairwise sequence identity across a set of structures — e.g. the per-chain
+protein PDB files `chem.protein.split` writes out, to see at a glance which
+chains are the same protein (~1.0) versus unrelated (near 0). Same identity
+definition `align` reports, but computed for every pair among `structures`
+directly, with no reference or structural superposition step.
+
+- `structures` — list of PDB/CIF file paths.
+- `chain` — optional chain id to use in every structure (default: each
+  structure's own primary polymer chain — the one with the most standard
+  amino acid residues, same auto-selection `align` uses for its reference).
+  Most `chem.protein.split` outputs already contain a single chain, so this
+  rarely needs to be passed.
+
+Returns a dict of dicts, `{path_i: {path_j: identity, ...}, ...}`, one entry
+for every pair among the structures that had a usable chain (including
+`path_i == path_i` → `1.0`), symmetric (`identity[a][b] == identity[b][a]`).
+`identity` is a plain float rounded to 3 decimal places, same definition as
+`align`'s. A structure with no chain usable for sequence comparison (no
+polymer residues, or the requested `chain` id not found) is skipped with a
+warning (unless quiet) and omitted from the matrix entirely, rather than
+raising.
+
 ### `protein.find_pocket(structure, ligand=None, outdir=None)`
 
 Run [fpocket](https://github.com/Discngine/fpocket) on a PDB file and

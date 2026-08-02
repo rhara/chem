@@ -168,6 +168,15 @@ align_results = protein.align(
     outdir="aligned",
 )
 
+# Pairwise sequence identity across a set of structures -- e.g. the per-chain
+# files chem.protein.split writes out, to see at a glance which chains are the
+# same protein (~1.0) versus unrelated (near 0). Returns a dict of dicts,
+# {path_i: {path_j: identity, ...}, ...}, symmetric, including self-identity.
+identity_results = protein.identity_matrix(
+    ["split/4BCF_protein_A.pdb", "split/4BCF_protein_B.pdb", "split/4BCH_protein_A.pdb"],
+    chain=None,  # override auto chain selection, same as align()'s
+)
+
 # Run fpocket on a structure and identify the pocket nearest a ligand.
 pocket = protein.find_pocket(
     "aligned/1PPB.pdb",
@@ -216,6 +225,16 @@ gaps at all), but a gapped position (e.g. a loop present in one structure but
 not the other) counts in neither the numerator nor the denominator. A
 structure with too few residues in common with the reference is skipped with
 a warning rather than raising.
+
+`identity_matrix` computes the same sequence identity `align` reports, but
+pairwise across every structure passed in, with no reference/superposition
+step -- just each structure's own primary polymer chain (`chain` overrides
+auto-selection, applied to every structure, same as `align`'s chain param).
+Handy for eyeballing which of a batch of structures/chains are actually the
+same protein, e.g. sanity-checking `chem.protein.split`'s per-chain output
+before further analysis. A structure with no usable chain is skipped with a
+warning and left out of the matrix entirely (not even as a self-identity
+entry), same as `align`.
 
 `find_pocket` runs [fpocket](https://github.com/Discngine/fpocket) on a PDB file
 (fpocket requires legacy PDB format, which is what `align` always writes) and picks

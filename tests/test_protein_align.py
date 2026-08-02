@@ -177,3 +177,62 @@ def test_best_matching_chain_alignment_prefers_identity_over_raw_matched_count(t
 
     assert identity == 1.0
     assert len(ref_pts) == len(small_seq)
+
+
+def test_identity_matrix_self_identity_is_one(tmp_path):
+    path = tmp_path / "a.pdb"
+    _write_chain(path, "A", "AGLVPSTCNQ")
+
+    matrix = pa.identity_matrix([str(path)])
+
+    assert matrix == {str(path): {str(path): 1.0}}
+
+
+def test_identity_matrix_symmetric_and_values(tmp_path):
+    path_a = tmp_path / "a.pdb"
+    path_b = tmp_path / "b.pdb"  # same sequence as a -- should be identity 1.0
+    path_c = tmp_path / "c.pdb"  # unrelated sequence
+    _write_chain(path_a, "A", "AGLVPSTCNQ")
+    _write_chain(path_b, "A", "AGLVPSTCNQ")
+    _write_chain(path_c, "A", "MIFVHKRDEY")
+
+    matrix = pa.identity_matrix([str(path_a), str(path_b), str(path_c)])
+
+    a, b, c = str(path_a), str(path_b), str(path_c)
+    assert matrix[a][a] == matrix[b][b] == matrix[c][c] == 1.0
+    assert matrix[a][b] == matrix[b][a] == 1.0
+    assert matrix[a][c] == matrix[c][a]
+    assert matrix[b][c] == matrix[c][b]
+    assert matrix[a][c] < 1.0
+
+
+def test_identity_matrix_skips_structure_with_no_polymer_residues(tmp_path):
+    good_path = tmp_path / "good.pdb"
+    _write_chain(good_path, "A", "AGLVPSTCNQ")
+
+    bad_path = tmp_path / "no_polymer.pdb"
+    lines = [_atom_line(1, "C1", "LIG", "A", 1, 0.0, 0.0, 0.0, record="HETATM")]
+    bad_path.write_text("\n".join(lines) + "\nEND\n")
+
+    matrix = pa.identity_matrix([str(good_path), str(bad_path)])
+
+    assert list(matrix) == [str(good_path)]
+    assert matrix == {str(good_path): {str(good_path): 1.0}}
+
+
+def test_identity_matrix_respects_explicit_chain(tmp_path):
+    # Chain "S" differs between the two files (and is the longer chain, so a
+    # size-based default heuristic would pick it); chain "B" is identical between
+    # them. Only if chain="B" is actually honored (not silently ignored in favor
+    # of auto-selecting the larger chain) does the pair come out at identity 1.0.
+    path_1 = tmp_path / "one.pdb"
+    _write_chain(path_1, "S", "AGLVPSTCNQKR", mode="w")
+    _write_chain(path_1, "B", "MIFVHKRDEY", mode="a")
+
+    path_2 = tmp_path / "two.pdb"
+    _write_chain(path_2, "S", "WYHDEKRQNCT", mode="w")
+    _write_chain(path_2, "B", "MIFVHKRDEY", mode="a")
+
+    matrix = pa.identity_matrix([str(path_1), str(path_2)], chain="B")
+
+    assert matrix[str(path_1)][str(path_2)] == 1.0

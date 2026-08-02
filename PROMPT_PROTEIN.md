@@ -1,12 +1,12 @@
-# chem.protein.summary / chem.protein.get_fasta / chem.protein.align / chem.protein.find_pocket / chem.protein.list_pockets / chem.protein.split の再現プロンプト
+# chem.protein.summary / chem.protein.get_fasta / chem.protein.align / chem.protein.identity_matrix / chem.protein.find_pocket / chem.protein.list_pockets / chem.protein.split の再現プロンプト
 
-`chem`リポジトリの`chem`パッケージ内に、構造解析用のサブパッケージ`protein`(`chem.protein`)を追加し、UniProtエントリのアノテーション取得(`summary`)とFASTA配列取得(`get_fasta`)、複数構造のシーケンス・3Dアラインメント(`align`)、リガンド近傍のfpocketポケット・構成残基特定(`find_pocket`)、リガンドを持たない構造向けの全候補ポケット列挙(`list_pockets`)、構造ファイルをリガンドフリーの蛋白質PDBと各HETATM残基のSDFに分割する(`split`)を実装するための指示。`chem.rcsb`・`chem.alphafold`でダウンロードした構造をそのまま入力にできることを想定する。
+`chem`リポジトリの`chem`パッケージ内に、構造解析用のサブパッケージ`protein`(`chem.protein`)を追加し、UniProtエントリのアノテーション取得(`summary`)とFASTA配列取得(`get_fasta`)、複数構造のシーケンス・3Dアラインメント(`align`)、任意の構造集合の総当たり配列一致度マトリクス(`identity_matrix`)、リガンド近傍のfpocketポケット・構成残基特定(`find_pocket`)、リガンドを持たない構造向けの全候補ポケット列挙(`list_pockets`)、構造ファイルをリガンドフリーの蛋白質PDBと各HETATM残基のSDFに分割する(`split`)を実装するための指示。`chem.rcsb`・`chem.alphafold`でダウンロードした構造をそのまま入力にできることを想定する。
 
 ## パッケージ構成
 
-- `src/chem/protein/__init__.py`: `from .annotation import get_fasta, summary` / `from .structural_align import align` / `from .pocket import find_pocket, list_pockets` / `from .splitting import split` として再エクスポート
+- `src/chem/protein/__init__.py`: `from .annotation import get_fasta, summary` / `from .structural_align import align, identity_matrix` / `from .pocket import find_pocket, list_pockets` / `from .splitting import split` として再エクスポート
 - `src/chem/protein/annotation.py`: `summary`・`get_fasta`の実装
-- `src/chem/protein/structural_align.py`: `align`の実装
+- `src/chem/protein/structural_align.py`: `align`・`identity_matrix`の実装(`identity_matrix`は`align`が使う`_load_structure`/`_select_chain`/`_chain_seq_and_ca`/`_matched_ca_pairs`をそのまま再利用するため同じファイルに置く)
 - `src/chem/protein/pocket.py`: `find_pocket`の実装
 - `src/chem/protein/splitting.py`: `split`の実装(ファイル名を`split.py`にしない理由は下記の注意点と同じ)
 
@@ -81,6 +81,25 @@ protein.align(structures, reference=None, chain=None, outdir="aligned")
 6. マッチしたCA原子ペアが3組未満なら(`_MIN_MATCHED_RESIDUES = 3`)、その構造はアラインメント不可としてスキップ(quiet時以外は`stderr`に警告を出し、処理は継続)
 7. `Bio.PDB.Superimposer`でマッチしたCA原子ペアに対してKabsch法によるフィッティングを行い、得られた回転・並進を**構造の全原子**(タンパク質だけでなくリガンド・水も含む)に適用する。これにより、align出力後もリガンドの相対位置が保たれ、後続の`find_pocket`にそのまま使える。`results[path] = {"rmsd": round(float(sup.rms), 3), "identity": round(identity, 3)}`
 8. `Bio.PDB.PDBIO`で、referenceも含めて各構造を`outdir`に`{入力ファイルのstem}.pdb`として書き出す(**入力がCIFでも常にPDB形式で出力する** — fpocketがPDB形式を要求するための一貫性)。referenceの書き出しはメインループの前に1回だけ行い、`structures`側のループでは`path == ref_path`のときスキップする(referenceが`structures`に含まれない場合でも正しく書き出される)
+
+## chem.protein.identity_matrix
+
+```python
+from chem import protein
+protein.identity_matrix(structures, chain=None)
+```
+
+リポジトリ所有者から「splitされた蛋白のidentityのマトリクスを作りたい」という要望を受けて実装。`align`が計算する配列一致度(`identity`)を、reference/構造的重ね合わせ(Kabsch fit・PDB書き出し)なしに、渡された構造集合の**全ペア**について計算する。典型的な用途は`chem.protein.split`の出力(チェーンごとに1ファイルになった蛋白質PDB群)を渡し、どのチェーンが同一蛋白質か(識別度~1.0)、無関係か(~0付近)を一覧できるようにすること。
+
+- `structures`: PDB/CIF構造ファイルパスのリスト
+- `chain`: 全構造に共通で使うチェーンIDを明示指定(省略時は各構造ごとに標準アミノ酸残基を最も多く含むチェーンを自動選択 -- `align`のreference選択と同じ基準)。`chem.protein.split`の出力は既に1ファイル1チェーンになっていることが多いので、通常は指定不要
+- 戻り値: `{path_i: {path_j: identity, ...}, ...}`の辞書の辞書。使用可能なチェーンを持つ構造同士の全ペア(自分自身との組み合わせ`path_i == path_i`は`1.0`)について1エントリずつ持ち、対称(`matrix[a][b] == matrix[b][a]`)。`identity`は`align`と同じ定義(ギャップなしマッチ位置に対する一致率)の`float`、小数点3桁に丸め済み。配列比較に使えるチェーンがない構造(標準アミノ酸残基が皆無、または指定した`chain`が存在しない)は、quiet時以外は`stderr`に警告を出した上でスキップし、行・列どちらにもマトリクスへ含めない(`align`の「アラインメント不可な構造はスキップ」と同じ方針)
+
+### アルゴリズム
+
+1. 各`structures`について`_load_structure`で読み込み、`_select_chain(model, chain)`でチェーンを選択(`chain`引数が`None`なら自動選択、指定されていてそのチェーンIDが存在しなければ`ValueError`)し、`_chain_seq_and_ca`でシーケンス・CA原子リストを取得する。シーケンスが空(標準アミノ酸残基が1つもない)場合も`ValueError`とする。いずれかで`ValueError`が起きたパスは、quiet時以外`stderr`に警告を出してその構造をスキップし(`seqs`辞書に追加しない)、処理は継続する
+2. 生き残った構造(`seqs`に登録された構造)全ての組み合わせ(`i < j`のペア)について`_matched_ca_pairs(seq_i, ca_i, seq_j, ca_j)`(`align`が使うのと全く同じヘルパー)を呼び、返り値の3番目(`identity`)だけを使う(CA座標ペアは構造的重ね合わせをしないので不要)。結果を`matrix[path_i][path_j]`と`matrix[path_j][path_i]`の両方に同じ丸め値で格納する(対称性を保証)
+3. 各構造自身についても`matrix[path][path] = 1.0`をあらかじめ設定しておく(自明な自己一致なので、わざわざアラインメントを実行しない)
 
 ## chem.protein.find_pocket
 
@@ -201,27 +220,36 @@ HOH, WAT, DOD
 削除しこのノートブックに差し替えた。複数チェーン構成の違い(2チェーン vs 4チェーン)を
 横断的に確認できる点、および活性化ループのリン酸化トレオニン`TPO`という、糖鎖修飾`NAG`とは
 別種の「結合次数テンプレートと一致しない」ケースが一貫して現れる点で、より充実した題材になっている)。
-セル構成: (1) タイトル+概要md、(2) 9構造ダウンロード、(3) `split`の説明md、(4) 9構造を
-ループして`split`実行(デフォルトの`all_chains=False`のまま、`"protein"`はCDK9セットが
-`{"A", "B"}`、CDK2セットが`{"A", "B", "C", "D"}`の辞書になる)、(5) チェーン構成確認md、
-(6) `entry_id`/`n_chains`/`chain_ids`の`pandas.DataFrame`でチェーン数の違いを表示、
-(7) 分割結果の説明md、(8) 各構造の`split`結果(`"ligands"`)をそのまま`entry_id`列付きで
-結合した`pandas.DataFrame`で一覧表示、(9) コードごとに`bond_orders_restored`が常に
-同じ値になること(`TPO`は常に`False`、それ以外は常に`True`)を`groupby`で集計表示、
-(10) 網羅性確認md、(11) `chem.ligand.list_ligand_instances`(`exclude=WATER`)で構造ファイル
-自身から数えた水以外のHETATM残基インスタンス数と、`split`が実際に書き出したSDF数が
-一致すること(`assert`)を9構造それぞれで確認、(12) リガンドフリー蛋白質PDBの確認md、
-(13) `"protein"`辞書の全チェーンファイル(計28ファイル)に対して再度`list_ligand_instances`
-を実行し水以外のHETATM残基が0件であることを`assert`、(14) `TPO`/阻害剤比較md、
-(15) `4BCF`の`TPO`(`bond_orders_restored=False`)と`T6Q`(`True`)のSDFを読み込み直し、
-ボンドタイプ集合(前者は`{"SINGLE"}`のみ、後者は`AROMATIC`を含む)を比較、(16) 阻害剤SAR比較md、
-(17) `T6Q`/`T7Z`/`T3E`/`T9N`/`TJF`5化合物についてコードごとに1回だけSDFを読み込み直し、
+セル構成: (1) タイトル+概要md、(2) 9構造ダウンロード、(3) `split`の説明md(`remove_water=True`
+を使う旨も明記)、(4) 9構造をループして`split(..., remove_water=True, outdir="cdk9_cdk2_split")`
+実行(デフォルトの`all_chains=False`のまま、`"protein"`はCDK9セットが`{"A", "B"}`、
+CDK2セットが`{"A", "B", "C", "D"}`の辞書になる)、(5) チェーン構成確認md、(6) `entry_id`/
+`n_chains`/`chain_ids`の`pandas.DataFrame`でチェーン数の違いを表示、(7) 分割結果の説明md、
+(8) 各構造の`split`結果(`"ligands"`)をそのまま`entry_id`列付きで結合した`pandas.DataFrame`で
+一覧表示、(9) コードごとに`bond_orders_restored`が常に同じ値になること(`TPO`は常に`False`、
+それ以外は常に`True`)を`groupby`で集計表示、(10) 網羅性確認md、(11) `chem.ligand.list_ligand_instances`
+(`exclude=WATER`)で構造ファイル自身から数えた水以外のHETATM残基インスタンス数と、`split`が
+実際に書き出したSDF数が一致すること(`assert`)を9構造それぞれで確認、(12) リガンドフリー
+蛋白質PDBの確認md、(13) `"protein"`辞書の全チェーンファイル(計28ファイル)に対して再度
+`list_ligand_instances`を実行し水以外のHETATM残基が0件であることを`assert`、
+(14) `remove_water=True`確認md、(15) `Bio.PDB`で28ファイル全てを直接パースし`res.id[0] == "W"`
+(水のhetero flag)の残基が1件も無いことを`assert`(`list_ligand_instances`は水自体を対象外に
+しているため、この確認だけは別途必要)、(16) `TPO`/阻害剤比較md、(17) `4BCF`の`TPO`
+(`bond_orders_restored=False`)と`T6Q`(`True`)のSDFを読み込み直し、ボンドタイプ集合
+(前者は`{"SINGLE"}`のみ、後者は`AROMATIC`を含む)を比較、(18) 阻害剤SAR比較md、
+(19) `T6Q`/`T7Z`/`T3E`/`T9N`/`TJF`5化合物についてコードごとに1回だけSDFを読み込み直し、
 `bound_to_entries`(その化合物が結合していた構造id、重複除去してソート)・原子数・
 `chem.ligand.molecular_weight`/`qed`・SMILESを`pandas.DataFrame`で比較(`T6Q`/`T7Z`/`T3E`/`T9N`は
 CDK9・CDK2の両方に、`TJF`はCDK2のみに結合していることが`bound_to_entries`列に現れる)、
-(18) 可視化md、(19) 4チェーン構造`4BCK`の蛋白質PDB4ファイルをチェーンごとに色分けした
+(20) 可視化md、(21) 4チェーン構造`4BCK`の蛋白質PDB4ファイルをチェーンごとに色分けした
 cartoonとして、両キナーゼコピー(チェーンA/C)に結合した阻害剤`T3E`のSDF(stick)を
-py3Dmolで重ねて表示。
+py3Dmolで重ねて表示、(22) `identity_matrix`の説明md(リポジトリ所有者の「splitされた蛋白の
+identityのマトリクスを作りたい」という要望を受けて追加。キナーゼ同士・サイクリン同士は
+~1.0、キナーゼ vs サイクリンは無関係なフォールドなので~0.15、CDK9 vs CDK2のキナーゼドメイン
+同士は同ファミリーのパラログなので~0.4前後になる、という期待値の説明を含む)、
+(23) 28ファイル全ての`"protein"`パスと`{entry_id}_{chain_id}`ラベルを集め、
+`chem.protein.identity_matrix`を1回呼んで28×28の`numpy`配列に変換、(24) `matplotlib`の
+`imshow`でヒートマップとして可視化(カラーバー付き、軸ラベルに`{entry_id}_{chain_id}`)。
 
 ## 注意
 
@@ -247,5 +275,9 @@ py3Dmolで重ねて表示。
   それ以外は全て`True`(結合次数復元済み)になること、2/4チェーンいずれの構成でも蛋白質PDBが
   正しくチェーンごとに分割され水以外のHETATM残基が残らないこと、`T6Q`/`T7Z`/`T3E`/`T9N`が
   CDK9・CDK2の両方に、`TJF`がCDK2のみに結合しているという既知の実験事実が
-  `bound_to_entries`集計に正しく現れることを`notebooks/cdk9_cdk2_split.ipynb`の実行で確認した
-- テストは`tests/test_protein_align.py`・`tests/test_protein_pocket.py`にネットワーク・外部バイナリ(fpocket)不要な範囲(シーケンスマッチングロジック、`_matched_ca_pairs`が返す`identity`について同一配列で`1.0`・ギャップを含む場合はギャップ位置を分母/分子どちらからも除外・ギャップなしミスマッチを含む場合は分母に数えて分子には数えないこと、`align()`の戻り値が`{"rmsd":..., "identity":...}`の形でreferenceは`{"rmsd": 0.0, "identity": 1.0}`になること、`_best_matching_chain_alignment`が「マッチ位置数は多いが一致度が低い大きなチェーン」より「短くても一致度が高いチェーン」を選ぶこと(`3B9F`相当の合成データで再現)、`align()`をエンドツーエンドで実行してもサイズ最大の無関係なチェーンではなく正しいチェーンが選ばれ`identity`が高くなること、リガンド自動検出・HETコード判定・ファイル判定の分岐、ポケット選択の距離計算、`_info.txt`パーサ、fpocket未インストール時のエラーメッセージ、`_pocket_atm_paths`/`_pocket_result`の単体動作(`pocket{N}_vert.pqr`が存在する/しない両方のケース)、`_parse_pocket_spheres`が合成PQRテキストから`x`/`y`/`z`/`radius`を正しく取り出すこと、`list_pockets`を`_run_fpocket`を`monkeypatch`で偽の出力ディレクトリに差し替えて実行し`druggability_thres=None`なら全ポケットが`druggability_score`降順(値なしは最後)で返ること・デフォルト(`0.1`)では値なし/閾値未満のポケットが除外されること・`druggability_thres`を明示指定すればその閾値で絞り込まれること、`WATER`が`SOLVENT_AND_IONS`の真部分集合であること)のみ追加する。実際のBio.PDB構造アラインメントとfpocket実行は、簡易的な合成PDBテキスト(固定カラム位置で手書きしたATOM/HETATMレコード)を使ったオフラインテストと、実データでの手動実行確認(3PTB+BENでPocket 1が選ばれAsp189・Ser195が残基リストに含まれること、AlphaFold予測構造(リガンド無し)で`list_pockets`が複数候補を返し、そのうち`druggability_score >= 0.2`の3件を`spheres`経由でHTMLに書き出しブラウザで表示確認したところ、cartoon上にポケットごとに色分けされた充填体積として描画されることを確認済み)の組み合わせで検証する
+  `bound_to_entries`集計に正しく現れること、`identity_matrix`を全28チェーンPDBに対して
+  実行すると同一蛋白質の複数コピー同士(例: 4構造にわたるCDK9キナーゼチェーン)が~0.997-1.0、
+  キナーゼ vs サイクリン(無関係なフォールド)が~0.15、CDK9 vs CDK2のキナーゼドメイン同士
+  (同ファミリーのパラログ)が~0.4前後になり、ヒートマップ上で4つの高一致度ブロックとして
+  はっきり分かれることを`notebooks/cdk9_cdk2_split.ipynb`の実行で確認した
+- テストは`tests/test_protein_align.py`・`tests/test_protein_pocket.py`にネットワーク・外部バイナリ(fpocket)不要な範囲(`identity_matrix`が単一構造で自己一致`1.0`のみの辞書を返すこと、同一配列同士のペアが`1.0`・異なる配列同士のペアが対称(`matrix[a][b] == matrix[b][a]`)かつ`1.0`未満になること、標準アミノ酸残基を持たない構造(HETATMのみ)がスキップされ行・列どちらにも現れないこと、`chain`引数が実際に尊重され(サイズの大きい方のチェーンを自動選択するのではなく)指定したチェーン同士が比較されること、シーケンスマッチングロジック、`_matched_ca_pairs`が返す`identity`について同一配列で`1.0`・ギャップを含む場合はギャップ位置を分母/分子どちらからも除外・ギャップなしミスマッチを含む場合は分母に数えて分子には数えないこと、`align()`の戻り値が`{"rmsd":..., "identity":...}`の形でreferenceは`{"rmsd": 0.0, "identity": 1.0}`になること、`_best_matching_chain_alignment`が「マッチ位置数は多いが一致度が低い大きなチェーン」より「短くても一致度が高いチェーン」を選ぶこと(`3B9F`相当の合成データで再現)、`align()`をエンドツーエンドで実行してもサイズ最大の無関係なチェーンではなく正しいチェーンが選ばれ`identity`が高くなること、リガンド自動検出・HETコード判定・ファイル判定の分岐、ポケット選択の距離計算、`_info.txt`パーサ、fpocket未インストール時のエラーメッセージ、`_pocket_atm_paths`/`_pocket_result`の単体動作(`pocket{N}_vert.pqr`が存在する/しない両方のケース)、`_parse_pocket_spheres`が合成PQRテキストから`x`/`y`/`z`/`radius`を正しく取り出すこと、`list_pockets`を`_run_fpocket`を`monkeypatch`で偽の出力ディレクトリに差し替えて実行し`druggability_thres=None`なら全ポケットが`druggability_score`降順(値なしは最後)で返ること・デフォルト(`0.1`)では値なし/閾値未満のポケットが除外されること・`druggability_thres`を明示指定すればその閾値で絞り込まれること、`WATER`が`SOLVENT_AND_IONS`の真部分集合であること)のみ追加する。実際のBio.PDB構造アラインメントとfpocket実行は、簡易的な合成PDBテキスト(固定カラム位置で手書きしたATOM/HETATMレコード)を使ったオフラインテストと、実データでの手動実行確認(3PTB+BENでPocket 1が選ばれAsp189・Ser195が残基リストに含まれること、AlphaFold予測構造(リガンド無し)で`list_pockets`が複数候補を返し、そのうち`druggability_score >= 0.2`の3件を`spheres`経由でHTMLに書き出しブラウザで表示確認したところ、cartoon上にポケットごとに色分けされた充填体積として描画されることを確認済み)の組み合わせで検証する

@@ -217,3 +217,54 @@ def align(structures, reference=None, chain=None, outdir="aligned"):
         results[path] = {"rmsd": round(float(sup.rms), 3), "identity": round(identity, 3)}
 
     return results
+
+
+@logged
+def identity_matrix(structures, chain=None):
+    """Pairwise sequence identity matrix across a set of structures -- e.g. the
+    per-chain protein PDB files chem.protein.split writes out, to see at a glance
+    which chains are the same protein (~1.0) versus unrelated (near 0).
+
+    structures: list of PDB/CIF file paths.
+    chain: optional chain id to use in every structure (default: each structure's
+        own primary polymer chain, the one with the most standard amino acid
+        residues -- same auto-selection align() uses for its reference). Most
+        chem.protein.split outputs already contain a single chain, so this
+        rarely needs to be passed.
+
+    Returns a dict of dicts, `{path_i: {path_j: identity, ...}, ...}`, one entry
+    for every pair among the structures that had a usable chain (including
+    path_i == path_i -> 1.0), symmetric (identity[a][b] == identity[b][a]).
+    identity is the fraction of matched (gap-free) sequence positions with an
+    identical residue -- same definition as align()'s identity, a plain float
+    rounded to 3 decimal places. A structure with no chain usable for sequence
+    comparison (no polymer residues, or the requested chain id not found) is
+    skipped with a warning (unless quiet) and omitted from the matrix entirely,
+    rather than raising.
+    """
+    seqs = {}
+    for path in structures:
+        try:
+            structure = _load_structure(path)
+            sel_chain = _select_chain(next(structure.get_models()), chain)
+            seq, ca = _chain_seq_and_ca(sel_chain)
+            if not seq:
+                raise ValueError("no standard amino acid residues with a CA atom found")
+        except ValueError as e:
+            if not is_quiet():
+                print(f"skipping {path}: {e}", file=sys.stderr)
+            continue
+        seqs[path] = (seq, ca)
+
+    paths = list(seqs)
+    matrix = {p: {p: 1.0} for p in paths}
+    for i, path_i in enumerate(paths):
+        seq_i, ca_i = seqs[path_i]
+        for path_j in paths[i + 1 :]:
+            seq_j, ca_j = seqs[path_j]
+            _, _, identity = _matched_ca_pairs(seq_i, ca_i, seq_j, ca_j)
+            identity = round(identity, 3)
+            matrix[path_i][path_j] = identity
+            matrix[path_j][path_i] = identity
+
+    return matrix
