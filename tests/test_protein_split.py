@@ -54,7 +54,8 @@ def mock_chemcomp_requests(monkeypatch):
     """split() calls load_ligand for every non-water HETATM residue -- mock the PDB
     Chemical Component Dictionary lookup for every test so none of them hit the
     network. "LIG"/"OTH" resolve to a benzene template; any other code (e.g. "NA")
-    gets no descriptors, so load_ligand raises and split() skips it.
+    gets no descriptors, so load_ligand raises and split() falls back to writing
+    raw (bond-order-unrestored) connectivity for it instead.
     """
     import chem.ligand.extract as le
 
@@ -101,28 +102,9 @@ def _residue_hetero_codes(pdb_path, chain_id=None):
     return codes
 
 
-def test_split_writes_single_protein_pdb_without_ligands_by_default(structure_path, tmp_path):
+def test_split_writes_per_chain_protein_pdbs_by_default(structure_path, tmp_path):
     outdir = str(tmp_path / "out")
     result = split(structure_path, outdir=outdir)
-
-    assert result["protein"] == os.path.join(outdir, "structure_protein.pdb")
-    assert os.path.exists(result["protein"])
-
-    codes_a = _residue_hetero_codes(result["protein"], "A")
-    codes_b = _residue_hetero_codes(result["protein"], "B")
-    assert codes_a == {"HOH"}  # LIG and NA (ligands) dropped, water kept
-    assert codes_b == {"HOH"}  # OTH dropped
-
-
-def test_split_creates_outdir_if_missing(structure_path, tmp_path):
-    outdir = str(tmp_path / "does" / "not" / "exist" / "yet")
-    result = split(structure_path, outdir=outdir)
-    assert os.path.exists(result["protein"])
-
-
-def test_split_chains_writes_per_chain_files_with_chain_id_in_filename(structure_path, tmp_path):
-    outdir = str(tmp_path / "out")
-    result = split(structure_path, split_chains=True, outdir=outdir)
 
     assert set(result["protein"].keys()) == {"A", "B"}
     assert result["protein"]["A"] == os.path.join(outdir, "structure_protein_A.pdb")
@@ -134,21 +116,63 @@ def test_split_chains_writes_per_chain_files_with_chain_id_in_filename(structure
     chain_b_only = next(parser.get_structure("b", result["protein"]["B"]).get_models())
     assert [c.id for c in chain_b_only] == ["B"]
 
+    codes_a = _residue_hetero_codes(result["protein"]["A"], "A")
+    codes_b = _residue_hetero_codes(result["protein"]["B"], "B")
+    assert codes_a == {"HOH"}  # LIG and NA (ligands) dropped, water kept
+    assert codes_b == {"HOH"}  # OTH dropped
+
+
+def test_split_creates_outdir_if_missing(structure_path, tmp_path):
+    outdir = str(tmp_path / "does" / "not" / "exist" / "yet")
+    result = split(structure_path, outdir=outdir)
+    assert os.path.exists(result["protein"]["A"])
+
+
+def test_split_all_chains_writes_single_protein_pdb(structure_path, tmp_path):
+    outdir = str(tmp_path / "out")
+    result = split(structure_path, all_chains=True, outdir=outdir)
+
+    assert result["protein"] == os.path.join(outdir, "structure_protein.pdb")
+    assert os.path.exists(result["protein"])
+
+    codes_a = _residue_hetero_codes(result["protein"], "A")
+    codes_b = _residue_hetero_codes(result["protein"], "B")
+    assert codes_a == {"HOH"}  # LIG and NA (ligands) dropped, water kept
+    assert codes_b == {"HOH"}  # OTH dropped
+
 
 def test_split_writes_ligand_sdf_with_restored_bond_orders(structure_path, tmp_path):
     outdir = str(tmp_path / "out")
     result = split(structure_path, outdir=outdir)
 
     ligands_by_code = {lig["code"]: lig for lig in result["ligands"]}
-    assert set(ligands_by_code) == {"LIG", "OTH"}  # NA skipped, no template match
+    # every non-water HETATM instance gets an SDF, including "NA" (see the next test) --
+    # LIG/OTH are just the two that get proper bond-order restoration.
+    assert set(ligands_by_code) == {"LIG", "OTH", "NA"}
 
     lig_path = ligands_by_code["LIG"]["path"]
     assert lig_path == os.path.join(outdir, "structure_ligand_LIG_A200.sdf")
     assert os.path.exists(lig_path)
+    assert ligands_by_code["LIG"]["bond_orders_restored"] is True
     mol = next(Chem.SDMolSupplier(lig_path))
     assert mol.GetNumAtoms() == 6
     assert all(atom.GetIsAromatic() for atom in mol.GetAtoms())
 
-    # the protein PDB has NA excluded too, even though it never got an SDF --
-    # it's still a non-water ligand candidate that split() strips out of the protein.
-    assert "NA" not in _residue_hetero_codes(result["protein"], "A")
+    # the protein PDB has NA excluded too, even though its SDF wasn't bond-order
+    # restored -- it's still a non-water ligand candidate that split() strips out
+    # of the protein, same as any other.
+    assert "NA" not in _residue_hetero_codes(result["protein"]["A"], "A")
+
+
+def test_split_writes_raw_sdf_when_no_bond_order_template_matches(structure_path, tmp_path):
+    outdir = str(tmp_path / "out")
+    result = split(structure_path, outdir=outdir)
+
+    na_entry = next(lig for lig in result["ligands"] if lig["code"] == "NA")
+    assert na_entry["bond_orders_restored"] is False
+    assert na_entry["path"] == os.path.join(outdir, "structure_ligand_NA_A301.sdf")
+    assert os.path.exists(na_entry["path"])
+
+    mol = next(Chem.SDMolSupplier(na_entry["path"], sanitize=False))
+    assert mol.GetNumAtoms() == 1
+    assert mol.GetConformer().GetAtomPosition(0).x == pytest.approx(30.0)

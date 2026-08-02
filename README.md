@@ -179,16 +179,17 @@ pocket = protein.find_pocket(
 # prediction), list every candidate pocket fpocket finds instead.
 pockets = protein.list_pockets("af_data/AF-P00734-F1.pdb")
 
-# Split a structure into a ligand-free protein PDB and one SDF per non-water
-# HETATM ligand instance (ions/sugars/additives included) -- e.g. to prep a
-# receptor/ligand pair for docking.
+# Split a structure into a ligand-free protein PDB (one per chain) and one SDF
+# per non-water HETATM ligand instance (ions/sugars/additives included) -- e.g.
+# to prep a receptor/ligand pair for docking.
 split_result = protein.split(
     "data/1R1H.pdb",
-    split_chains=False,  # True writes one protein PDB per chain instead, chain id in the filename
+    all_chains=False,  # True writes a single protein PDB with every chain together instead
     outdir="split",
 )
-# split_result["protein"] -> "split/1R1H_protein.pdb"
-# split_result["ligands"] -> [{"path": "split/1R1H_ligand_BIR_A2001.sdf", "code": "BIR", ...}, ...]
+# split_result["protein"] -> {"A": "split/1R1H_protein_A.pdb"}
+# split_result["ligands"] -> [{"path": "split/1R1H_ligand_BIR_A2001.sdf", "code": "BIR",
+#                               "bond_orders_restored": True, ...}, ...]
 ```
 
 `align` selects each non-reference structure's chain by whichever best matches the
@@ -239,18 +240,21 @@ reports dozens of low-quality cavities on a typical structure, so `druggability_
 pass `None` to keep everything unfiltered.
 
 `split` decomposes a structure file into a ligand-free protein (water kept,
-everything else HETATM stripped) and one proper RDKit-backed SDF molecule per
-non-water HETATM residue instance -- real ligands, ions (`ZN`), glycosylation
-sugars (`NAG`), crystallization additives, all of it, each written out via
-`chem.ligand.load_ligand` (bond orders/aromaticity restored against the PDB
-Chemical Component Dictionary). `split_chains=True` writes one protein PDB
-per chain instead of one file with every chain together, the chain id folded
-into the filename. As with `chem.ligand.load_ligand` directly, an instance
-with no matching bond-order template (e.g. a covalently-linked peptidomimetic
-ligand, or incomplete crystallographic density) is skipped with a warning
-rather than aborting the whole split -- check `len(result["ligands"])`
-against `chem.ligand.list_ligand_instances(structure_path, exclude=protein.WATER)`
-if silent skips need to be caught.
+everything else HETATM stripped) and one SDF molecule per non-water HETATM
+residue instance -- real ligands, ions (`ZN`), glycosylation sugars (`NAG`),
+crystallization additives, all of it, every single one. Each is written out
+via `chem.ligand.load_ligand` when possible (bond orders/aromaticity restored
+against the PDB Chemical Component Dictionary, `bond_orders_restored=True`
+in the returned entry); when `load_ligand` can't resolve a template for it
+(e.g. a covalently-linked glycosylation sugar or peptidomimetic ligand
+missing the atom(s) involved in that link, relative to the free/standalone
+template, or incomplete crystallographic density), a warning is printed and
+the raw single-bond connectivity RDKit guesses from atomic distances is
+written instead (`bond_orders_restored=False`) -- every instance still gets
+an SDF either way, just not always with corrected bonds. By default the
+protein PDB is written one file per chain, the chain id folded into the
+filename; `all_chains=True` writes a single file with every chain together
+instead.
 
 ## chem.ligand — extract a ligand and score its drug-likeness
 

@@ -26,41 +26,47 @@ class _ProteinSelect(Select):
 
 
 @logged
-def split(structure_path, split_chains=False, outdir="split"):
+def split(structure_path, all_chains=False, outdir="split"):
     """Split a structure file into a ligand-free protein PDB and one SDF file
     per non-water HETATM ligand instance -- e.g. to prep a receptor/ligand
     pair for docking.
 
     structure_path: path to a PDB/CIF structure file.
-    split_chains: if True, write one protein PDB per chain, its filename
-        including the chain id, instead of a single PDB with every chain
-        together. Default False.
+    all_chains: if True, write a single protein PDB with every chain together
+        instead of one PDB per chain. Default False (split by chain).
     outdir: destination directory; created if missing.
 
     Returns a dict:
-        "protein": the protein PDB path (split_chains=False), or a
-            {chain_id: path} dict, one entry per chain (split_chains=True).
-            Water is kept (crystallographic waters are routinely useful
-            downstream); every other HETATM residue -- real ligands, ions,
-            crystallization additives, glycosylation sugars, alike -- is
-            stripped, since those are exactly what end up in "ligands" below
-            instead.
-        "ligands": list of {"path", "code", "chain", "resnum", "icode"}, one
-            entry per non-water HETATM residue *instance* (see
-            chem.ligand.list_ligand_instances) -- e.g. two copies of the same
-            ligand code bound to different chains produce two entries, each
-            its own SDF file. Each molecule's 3D coordinates come straight
-            from `structure_path`, with bond orders/aromaticity restored
-            against the PDB Chemical Component Dictionary (see
-            chem.ligand.load_ligand). An instance load_ligand can't resolve a
-            template for (e.g. a covalently-linked peptidomimetic ligand, or
-            incomplete crystallographic density) is skipped with a warning
-            (unless quiet) rather than aborting the whole split.
+        "protein": a {chain_id: path} dict, one entry per chain
+            (all_chains=False, the default), or the single protein PDB path
+            (all_chains=True). Water is kept (crystallographic waters are
+            routinely useful downstream); every other HETATM residue -- real
+            ligands, ions, crystallization additives, glycosylation sugars,
+            alike -- is stripped, since those are exactly what end up in
+            "ligands" below instead.
+        "ligands": list of {"path", "code", "chain", "resnum", "icode",
+            "bond_orders_restored"}, one entry per non-water HETATM residue
+            *instance* (see chem.ligand.list_ligand_instances) -- e.g. two
+            copies of the same ligand code bound to different chains produce
+            two entries, each its own SDF file. Every such instance gets an
+            SDF, no matter what -- 3D coordinates always come straight from
+            `structure_path`. When chem.ligand.load_ligand can resolve a
+            bond-order template for it against the PDB Chemical Component
+            Dictionary, that's what's written (`bond_orders_restored=True`:
+            proper bond orders/aromaticity). When it can't (e.g. a
+            covalently-linked glycosylation sugar or peptidomimetic ligand
+            missing the atom(s) involved in that link, relative to the
+            free/standalone template; or incomplete crystallographic
+            density), a warning is printed (unless quiet) and the raw
+            connectivity RDKit guesses from atomic distances is written
+            instead (`bond_orders_restored=False`: single bonds only, no
+            aromaticity/stereo -- still every atom and its real 3D
+            coordinates, just without corrected bonding).
     """
     # Deferred: chem.ligand.extract imports from chem.protein.pocket at
     # module load time, so importing it at this module's top level would
     # deadlock whichever of the two subpackages is imported first.
-    from ..ligand.extract import list_ligand_instances, load_ligand
+    from ..ligand.extract import _pick_ligand_residue, _residue_to_raw_mol, list_ligand_instances, load_ligand
 
     os.makedirs(outdir, exist_ok=True)
     stem = os.path.splitext(os.path.basename(structure_path))[0]
@@ -71,15 +77,15 @@ def split(structure_path, split_chains=False, outdir="split"):
 
     io = PDBIO()
     io.set_structure(structure)
-    if split_chains:
+    if all_chains:
+        protein_result = os.path.join(outdir, f"{stem}_protein.pdb")
+        io.save(protein_result, _ProteinSelect(exclude_residues))
+    else:
         protein_result = {}
         for chain in model:
             path = os.path.join(outdir, f"{stem}_protein_{chain.id}.pdb")
             io.save(path, _ProteinSelect(exclude_residues, chain_id=chain.id))
             protein_result[chain.id] = path
-    else:
-        protein_result = os.path.join(outdir, f"{stem}_protein.pdb")
-        io.save(protein_result, _ProteinSelect(exclude_residues))
 
     ligand_results = []
     for instance in list_ligand_instances(structure_path, exclude=WATER):
@@ -91,10 +97,23 @@ def split(structure_path, split_chains=False, outdir="split"):
                 resnum=instance["resnum"],
                 icode=instance["icode"],
             )
+            bond_orders_restored = True
         except ValueError as e:
             if not is_quiet():
-                print(f"skipping ligand instance {instance}: {e}", file=sys.stderr)
-            continue
+                print(
+                    f"no bond-order template match for ligand instance {instance}: {e}; "
+                    "writing raw (single-bond) connectivity instead",
+                    file=sys.stderr,
+                )
+            residue = _pick_ligand_residue(
+                structure_path,
+                instance["code"],
+                chain=instance["chain"],
+                resnum=instance["resnum"],
+                icode=instance["icode"],
+            )
+            mol = _residue_to_raw_mol(residue, instance["code"])
+            bond_orders_restored = False
 
         sdf_path = os.path.join(
             outdir,
@@ -103,7 +122,7 @@ def split(structure_path, split_chains=False, outdir="split"):
         writer = Chem.SDWriter(sdf_path)
         writer.write(mol)
         writer.close()
-        ligand_results.append({"path": sdf_path, **instance})
+        ligand_results.append({"path": sdf_path, "bond_orders_restored": bond_orders_restored, **instance})
 
     if not is_quiet():
         print(f"wrote protein PDB and {len(ligand_results)} ligand SDF(s) to {outdir}", file=sys.stderr)

@@ -137,25 +137,28 @@ AlphaFold予測構造のようにリガンドが一切結合していない構�
 
 ```python
 from chem import protein
-protein.split(structure_path, split_chains=False, outdir="split")
+protein.split(structure_path, all_chains=False, outdir="split")
 ```
 
-構造ファイルを、ドッキング等の下流処理用に (1) リガンドフリーの蛋白質PDBと (2) 水以外の各HETATM残基インスタンスを結合次数まで復元したSDFファイル群、に分割する。
+構造ファイルを、ドッキング等の下流処理用に (1) リガンドフリーの蛋白質PDBと (2) 水以外の各HETATM残基インスタンス**全て**をSDF化したファイル群、に分割する。「全て」が重要な点で、結合次数テンプレートが見つからないインスタンス(共有結合した糖鎖・ペプチド様リガンドなど)であってもSDF自体は必ず書き出す — 当初の実装は`chem.ligand.load_ligand`が`ValueError`を投げたインスタンスをスキップしていたが、リポジトリ所有者から「NAGもSDFに書き出してほしい。水以外の全てのHETATMを書き出す」という明示的な訂正が入り、結合次数を復元できない場合は代わりに生の(単結合のみの)結合情報で書き出すよう変更した
 
 - `structure_path`: PDB/CIF構造ファイルのパス
-- `split_chains`: `True`にすると、蛋白質PDBを1ファイルにまとめず、チェーンごとに(ファイル名にチェーンIDを含めて)分割する。デフォルト`False`
+- `all_chains`: `True`にすると、蛋白質PDBをチェーンごとに分割せず、全チェーンをまとめた1ファイルにする。デフォルト`False`(=デフォルトはチェーンごとの分割 — 当初`split_chains=True`でオプトインする設計にしていたが、リポジトリ所有者から「デフォルトをチェーン単位のsplitにし、まとめたい場合だけ`all_chains=True`を指定する形にしたい」という明示的な訂正が入り、デフォルトの意味を反転した)
 - `outdir`: 出力先ディレクトリ(存在しなければ作成)。デフォルト`"split"`
 - 戻り値: 以下のキーを持つ`dict`
-  - `"protein"`: `split_chains=False`なら蛋白質PDBのパス(文字列)、`True`なら`{チェーンID: パス}`の辞書。結晶水は残し、それ以外のHETATM残基(実際のリガンド・イオン・糖鎖修飾・結晶化添加剤など)は全て取り除く — それらは代わりに`"ligands"`側でSDF化されるため
-  - `"ligands"`: `[{"path", "code", "chain", "resnum", "icode"}, ...]`。水以外のHETATM残基*インスタンス*ごとに1エントリ(`chem.ligand.list_ligand_instances`と同じ粒度 — 同じコードのリガンドが複数チェーンに結合していれば別エントリになる)。各分子の3D座標は`structure_path`そのまま、結合次数・芳香族性はPDB Chemical Component Dictionaryのテンプレートと照合して復元する(`chem.ligand.load_ligand`をそのまま呼ぶ)。テンプレートが見つからない/原子数が一致しないインスタンス(共有結合したペプチド様リガンドや、密度が不完全な残基など)は`load_ligand`と同じく例外にはせず、警告(quietでない限り)付きでスキップし、蛋白質PDB側でも取り除かれたままにする(＝`"ligands"`には載らないがどこにも残らない)
+  - `"protein"`: `all_chains=False`(デフォルト)なら`{チェーンID: パス}`の辞書、`True`なら蛋白質PDBのパス(文字列)。結晶水は残し、それ以外のHETATM残基(実際のリガンド・イオン・糖鎖修飾・結晶化添加剤など)は全て取り除く — それらは代わりに`"ligands"`側でSDF化されるため
+  - `"ligands"`: `[{"path", "code", "chain", "resnum", "icode", "bond_orders_restored"}, ...]`。水以外のHETATM残基*インスタンス*ごとに**必ず**1エントリ(`chem.ligand.list_ligand_instances`と同じ粒度 — 同じコードのリガンドが複数チェーンに結合していれば別エントリになる。スキップは一切ない)。各分子の3D座標は`structure_path`そのまま。`chem.ligand.load_ligand`がPDB Chemical Component Dictionaryのテンプレートと照合して結合次数・芳香族性を復元できた場合は`bond_orders_restored=True`でその分子を、できなかった場合(共有結合した糖鎖修飾やペプチド様リガンドが、遊離型テンプレートに対して結合部位の原子が欠けている場合や、密度が不完全な残基など)は`bond_orders_restored=False`で、原子座標間の距離から単純に推定した単結合のみ・芳香族性なしの生の結合情報(quietでない限り警告を出す)を、それぞれSDFとして書き出す
 
 ### アルゴリズム
 
 1. `structure_path`をBio.PDBで読み込み、`_hetero_residues`(`chem.protein.pocket`内、標準残基・水を除く全HETATM残基を返す既存のヘルパー)で「除外すべき残基」の集合を作る
-2. `Bio.PDB.PDBIO`と、上記の除外残基集合をチェックする`Select`サブクラス(`accept_residue`で`residue not in exclude_residues`、`accept_chain`で`split_chains`時のみ対象チェーンに絞り込み)を使い、蛋白質PDBを書き出す。`split_chains=False`なら`{outdir}/{stem}_protein.pdb`に1ファイル、`True`ならチェーンごとに`{outdir}/{stem}_protein_{chain_id}.pdb`
+2. `Bio.PDB.PDBIO`と、上記の除外残基集合をチェックする`Select`サブクラス(`accept_residue`で`residue not in exclude_residues`、`accept_chain`で`all_chains=False`時のみ対象チェーンに絞り込み)を使い、蛋白質PDBを書き出す。`all_chains=True`なら`{outdir}/{stem}_protein.pdb`に1ファイル、デフォルト(`False`)ならチェーンごとに`{outdir}/{stem}_protein_{chain_id}.pdb`
 3. `chem.ligand.list_ligand_instances(structure_path, exclude=chem.protein.WATER)`で水以外の全HETATM残基インスタンスを列挙する(`WATER`を渡すことで、`list_ligand_instances`のデフォルト`exclude=SOLVENT_AND_IONS`とは異なり、イオンや糖鎖修飾も除外せず全て対象にする — ユーザーからの明示的な要望: 例`1R1H`の`BIR`(低分子阻害剤)・`NAG`(糖鎖)・`ZN`(イオン)は全て`split`の対象とする)
-4. 各インスタンスについて`chem.ligand.load_ligand(structure_path, code, chain=..., resnum=..., icode=...)`を呼び、成功すれば`{outdir}/{stem}_ligand_{code}_{chain}{resnum}{icode}.sdf`に`Chem.SDWriter`で1分子を書き出し、結果リストに追加する。`ValueError`(テンプレート不一致)は`chem.protein.align`の「マッチしない構造をスキップする」パターンと同様、`stderr`に警告を出して(quiet時以外)継続し、失敗を全体の例外にしない
-5. `chem.ligand.extract`(このモジュールが依存する)は`chem.protein.pocket`をトップレベルでimportしているため、`splitting.py`側で`chem.ligand.extract`をトップレベルでimportすると、どちらのサブパッケージが先にimportされるかによって循環importで壊れる(片方が初期化途中のもう片方から未定義のシンボルをimportしようとする)。これを避けるため、`list_ligand_instances`/`load_ligand`は`split`関数の**内部**で(呼び出し時に初めて)importする(遅延import)
+4. 各インスタンスについて`chem.ligand.load_ligand(structure_path, code, chain=..., resnum=..., icode=...)`を呼ぶ
+   - 成功すれば、その分子(結合次数復元済み)を使い`bond_orders_restored=True`
+   - `ValueError`(テンプレート不一致)が起きた場合は、`stderr`に警告を出し(quiet時以外)、`chem.ligand.extract`の内部ヘルパー`_pick_ligand_residue`+`_residue_to_raw_mol`(`load_ligand`が内部で結合次数復元の**前**に使っているのと同じ2ステップ)を直接呼んで、結合次数復元前の生のRDKit分子(PDB由来の距離ベース単結合のみ、芳香族性なし)を取得し、`bond_orders_restored=False`とする。**例外を全体に伝播させたりインスタンスを丸ごとスキップしたりはしない** — 必ず何らかのSDFを書き出す
+   - どちらの場合も`{outdir}/{stem}_ligand_{code}_{chain}{resnum}{icode}.sdf`に`Chem.SDWriter`で1分子を書き出し、`{"path", "bond_orders_restored", **instance}`を結果リストに追加する
+5. `chem.ligand.extract`(このモジュールが依存する)は`chem.protein.pocket`をトップレベルでimportしているため、`splitting.py`側で`chem.ligand.extract`をトップレベルでimportすると、どちらのサブパッケージが先にimportされるかによって循環importで壊れる(片方が初期化途中のもう片方から未定義のシンボルをimportしようとする)。これを避けるため、`list_ligand_instances`/`load_ligand`/`_pick_ligand_residue`/`_residue_to_raw_mol`は`split`関数の**内部**で(呼び出し時に初めて)importする(遅延import)
 
 ### `SOLVENT_AND_IONS`(自動検出で除外するHETコード、非網羅的)
 
@@ -192,29 +195,37 @@ HOH, WAT, DOD
 低分子阻害剤`BIR`/`TI1`/`OIR`という同じヘテロ原子構成)を`chem.rcsb.download_structures`
 (PDB idのリストを渡す形)でダウンロードし、`chem.protein.split`を3構造それぞれに適用する。
 セル構成: (1) タイトル+概要md、(2) 3構造ダウンロード、(3) `split`の説明md、(4) 3構造を
-ループして`split`実行、(5) 分割結果の説明md、(6) `chem.ligand.list_ligand_instances`
-(`exclude=WATER`)で全HETATM残基インスタンスを再列挙し`split`結果と突き合わせて
-`sdf_written`列付きの`pandas.DataFrame`で表示(`NAG`は既知の制限でスキップされ`False`に
-なることを確認)、(7) リガンドフリー蛋白質PDBの確認md、(8) 分割後の蛋白質PDBに対して
-再度`list_ligand_instances`を実行し水以外のHETATM残基が0件であることを表示、(9) 阻害剤比較md、
-(10) 主要阻害剤(`BIR`/`TI1`/`OIR`)のSDFを読み込み直し、原子数・芳香族原子数・
-`chem.ligand.molecular_weight`/`qed`・SMILESを`pandas.DataFrame`で比較、(11) 可視化md、
-(12) `1R1H`のリガンドフリー蛋白質(cartoon)と`BIR`のSDF(stick)をpy3Dmolで重ねて表示
-(座標系が`split`前後でずれていないことの視覚的確認)。
+ループして`split`実行(デフォルトの`all_chains=False`のまま、`"protein"`は各構造とも
+`{"A": ...}`の1チェーン辞書になる)、(5) 分割結果の説明md、(6) 各構造の`split`結果
+(`"ligands"`)をそのまま`entry_id`列付きで結合した`pandas.DataFrame`で一覧表示
+(`NAG`は3残基とも`bond_orders_restored=False`、`ZN`と主要阻害剤は`True`になることを確認)、
+(7) 網羅性確認md、(8) `chem.ligand.list_ligand_instances`(`exclude=WATER`)で構造ファイル
+自身から数えた水以外のHETATM残基インスタンス数と、`split`が実際に書き出したSDF数が
+一致すること(`assert`)を3構造それぞれで確認、(9) リガンドフリー蛋白質PDBの確認md、
+(10) `"protein"`辞書の各チェーンファイルに対して再度`list_ligand_instances`を実行し
+水以外のHETATM残基が0件であることを表示、(11) 阻害剤比較md、(12) 主要阻害剤
+(`BIR`/`TI1`/`OIR`)のSDFを読み込み直し、原子数・芳香族原子数・
+`chem.ligand.molecular_weight`/`qed`・SMILESを`pandas.DataFrame`で比較、(13) 可視化md、
+(14) `1R1H`のリガンドフリー蛋白質(チェーンA、cartoon)と`BIR`のSDF(stick)をpy3Dmolで
+重ねて表示(座標系が`split`前後でずれていないことの視覚的確認)。
 
 ## 注意
 
 - このリポジトリはdd_*プロジェクト群、`~/lab/chembl`、`dd_chembl`とは無関係な独立プロジェクト。それらのコードやロジックを参照・流用しない
 - テストは`tests/test_protein_split.py`に、`split`のロジック(合成PDBテキストに対する、
-  デフォルトでの単一蛋白質PDB書き出しと水以外のHETATM残基除去、`outdir`未存在時の自動作成、
-  `split_chains=True`でのチェーン別ファイル分割とファイル名へのチェーンID埋め込み、
-  リガンドSDFの書き出しと`AssignBondOrdersFromTemplate`によるベンゼン環の芳香族性復元、
-  テンプレートの取得に失敗するインスタンス(`requests.get`を`monkeypatch`で偽装し、
-  該当コードにディスクリプタを一切返さない)が例外にならずスキップされ、かつ蛋白質PDB側
-  からも正しく取り除かれること)を、`chem.ligand.extract`の`requests.get`を`monkeypatch`する
-  ことでネットワーク不要なオフラインテストとして追加する。実データでの動作確認は
+  デフォルト(`all_chains=False`)でのチェーンごとの蛋白質PDB書き出し・ファイル名への
+  チェーンID埋め込みと水以外のHETATM残基除去、`outdir`未存在時の自動作成、
+  `all_chains=True`での単一蛋白質PDBへの統合書き出し、リガンドSDFの書き出しと
+  `AssignBondOrdersFromTemplate`によるベンゼン環の芳香族性復元(`bond_orders_restored=True`)、
+  テンプレートの取得に失敗するインスタンス(`requests.get`を`monkeypatch`で偽装し、該当コードに
+  ディスクリプタを一切返さない)がスキップされずに`_pick_ligand_residue`+`_residue_to_raw_mol`
+  による生の単結合SDFとして書き出され(`bond_orders_restored=False`)、かつ蛋白質PDB側からは
+  正しく取り除かれること)を、`chem.ligand.extract`の`requests.get`を`monkeypatch`することで
+  ネットワーク不要なオフラインテストとして追加する。実データでの動作確認は
   `1R1H`/`1R1I`/`1R1J`(ネプリライシン+低分子阻害剤、糖鎖、亜鉛イオン)で`split`を実行し、
-  `NAG`(糖鎖)は一貫してテンプレート不一致でスキップされる一方、`ZN`と主要阻害剤
-  (`BIR`/`TI1`/`OIR`)は正しくSDF化され、分子量・QEDが計算できることを
-  `notebooks/neprilysin_split.ipynb`の実行で確認した
+  `NAG`(糖鎖)3残基・`ZN`・主要阻害剤(`BIR`/`TI1`/`OIR`)の計5インスタンス全てが
+  (構造ファイル自身から`list_ligand_instances`で数えた件数と一致する形で)1つも欠けずSDF化され、
+  `NAG`は`bond_orders_restored=False`(生の単結合)、`ZN`と主要阻害剤は`True`(結合次数復元済み)
+  になり、後者について分子量・QEDが計算できることを`notebooks/neprilysin_split.ipynb`の実行で
+  確認した
 - テストは`tests/test_protein_align.py`・`tests/test_protein_pocket.py`にネットワーク・外部バイナリ(fpocket)不要な範囲(シーケンスマッチングロジック、`_matched_ca_pairs`が返す`identity`について同一配列で`1.0`・ギャップを含む場合はギャップ位置を分母/分子どちらからも除外・ギャップなしミスマッチを含む場合は分母に数えて分子には数えないこと、`align()`の戻り値が`{"rmsd":..., "identity":...}`の形でreferenceは`{"rmsd": 0.0, "identity": 1.0}`になること、`_best_matching_chain_alignment`が「マッチ位置数は多いが一致度が低い大きなチェーン」より「短くても一致度が高いチェーン」を選ぶこと(`3B9F`相当の合成データで再現)、`align()`をエンドツーエンドで実行してもサイズ最大の無関係なチェーンではなく正しいチェーンが選ばれ`identity`が高くなること、リガンド自動検出・HETコード判定・ファイル判定の分岐、ポケット選択の距離計算、`_info.txt`パーサ、fpocket未インストール時のエラーメッセージ、`_pocket_atm_paths`/`_pocket_result`の単体動作(`pocket{N}_vert.pqr`が存在する/しない両方のケース)、`_parse_pocket_spheres`が合成PQRテキストから`x`/`y`/`z`/`radius`を正しく取り出すこと、`list_pockets`を`_run_fpocket`を`monkeypatch`で偽の出力ディレクトリに差し替えて実行し`druggability_thres=None`なら全ポケットが`druggability_score`降順(値なしは最後)で返ること・デフォルト(`0.1`)では値なし/閾値未満のポケットが除外されること・`druggability_thres`を明示指定すればその閾値で絞り込まれること、`WATER`が`SOLVENT_AND_IONS`の真部分集合であること)のみ追加する。実際のBio.PDB構造アラインメントとfpocket実行は、簡易的な合成PDBテキスト(固定カラム位置で手書きしたATOM/HETATMレコード)を使ったオフラインテストと、実データでの手動実行確認(3PTB+BENでPocket 1が選ばれAsp189・Ser195が残基リストに含まれること、AlphaFold予測構造(リガンド無し)で`list_pockets`が複数候補を返し、そのうち`druggability_score >= 0.2`の3件を`spheres`経由でHTMLに書き出しブラウザで表示確認したところ、cartoon上にポケットごとに色分けされた充填体積として描画されることを確認済み)の組み合わせで検証する
