@@ -17,5 +17,5 @@ notebooks/cdk_paralogs_aligned/
 notebooks/cdk_paralogs_chembl_data/
 notebooks/cdk_paralogs_pdb_data/
 notebooks/cdk20_docking_data/
-notebooks/neprilysin_data/
-notebooks/neprilysin_split/
+notebooks/cdk9_cdk2_data/
+notebooks/cdk9_cdk2_split/

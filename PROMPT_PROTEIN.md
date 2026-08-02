@@ -190,24 +190,37 @@ HOH, WAT, DOD
 
 `notebooks/alphafold_pocket_thrb_human.ipynb`のRCSBダウンロードセルの直後に、ダウンロードした複数のトロンビン構造をAlphaFold予測構造を参照にアラインする独立セクション(タイトルmd + コード。コードは`align()`実行と`align_df`(rmsd/identity列)の表示のみ)を置く。重ね書きpy3Dmolビューア(トグルボタンで表示構造を選ぶウィジェット)はさらに別の独立セクション(独自のH2タイトルmd + コード)として、アラインメントセクションの直後に続ける -- 1セルに両方を詰め込まない。fpocketのサンプルは別途、リガンド入り構造(例: トリプシン+ベンザミジン `3PTB`)で`find_pocket`を実行し、選ばれたポケットの残基をハイライト表示するセルを追加する。`list_pockets`のサンプルは、AlphaFold予測構造セクション(リガンドが存在しない)に以下3セルを追加する: (1) `pandas.DataFrame`で「pocket_id / score / druggability_score / volume / n_residues」の表として全候補ポケットを表示、(2) `druggability_score >= 0.2`の候補ポケットを、半透明cartoonの上にポケットごとに異なる色の構成残基stickでハイライトして可視化(色とpocket_id/druggability_scoreの凡例付き)、(3) 同じ候補ポケットを、構成残基のstickの代わりに`spheres`フィールド(fpocketのアルファ球)を`py3Dmol.addSphere`で球ごとに描画し、空洞を充填された体積として可視化(こちらもポケットごとに色分け・凡例付き)。既存セルは書き換えず、新規セルとして追記する。
 
-`notebooks/neprilysin_split.ipynb`(新規)は、同一標的(ネプリライシン)に異なる低分子阻害剤が
-結合した3構造`1R1H`/`1R1I`/`1R1J`(いずれも単一チェーンA、糖鎖`NAG`×3・亜鉛イオン`ZN`×1・
-低分子阻害剤`BIR`/`TI1`/`OIR`という同じヘテロ原子構成)を`chem.rcsb.download_structures`
-(PDB idのリストを渡す形)でダウンロードし、`chem.protein.split`を3構造それぞれに適用する。
-セル構成: (1) タイトル+概要md、(2) 3構造ダウンロード、(3) `split`の説明md、(4) 3構造を
-ループして`split`実行(デフォルトの`all_chains=False`のまま、`"protein"`は各構造とも
-`{"A": ...}`の1チェーン辞書になる)、(5) 分割結果の説明md、(6) 各構造の`split`結果
-(`"ligands"`)をそのまま`entry_id`列付きで結合した`pandas.DataFrame`で一覧表示
-(`NAG`は3残基とも`bond_orders_restored=False`、`ZN`と主要阻害剤は`True`になることを確認)、
-(7) 網羅性確認md、(8) `chem.ligand.list_ligand_instances`(`exclude=WATER`)で構造ファイル
+`notebooks/cdk9_cdk2_split.ipynb`(新規)は、同一の2-amino-4-heteroaryl-pyrimidine系
+阻害剤シリーズをCDK9-サイクリンT複合体4構造(`4BCF`/`4BCH`/`4BCI`/`4BCJ`、キナーゼ+サイクリンの
+2チェーン)とCDK2-サイクリンA複合体5構造(`4BCK`/`4BCM`/`4BCN`/`4BCO`/`4BCQ`、非対称単位に
+2コピー含む4チェーン)にそれぞれ結合させた計9構造を`chem.rcsb.download_structures`
+(PDB idのリストを渡す形)でダウンロードし、`chem.protein.split`を9構造それぞれに適用する
+(当初はネプリライシン3構造`1R1H`/`1R1I`/`1R1J`の単一チェーン例だったが、リポジトリ所有者が
+「もっと良い例」としてこの9構造を提示したため、そちらの`notebooks/neprilysin_split.ipynb`は
+削除しこのノートブックに差し替えた。複数チェーン構成の違い(2チェーン vs 4チェーン)を
+横断的に確認できる点、および活性化ループのリン酸化トレオニン`TPO`という、糖鎖修飾`NAG`とは
+別種の「結合次数テンプレートと一致しない」ケースが一貫して現れる点で、より充実した題材になっている)。
+セル構成: (1) タイトル+概要md、(2) 9構造ダウンロード、(3) `split`の説明md、(4) 9構造を
+ループして`split`実行(デフォルトの`all_chains=False`のまま、`"protein"`はCDK9セットが
+`{"A", "B"}`、CDK2セットが`{"A", "B", "C", "D"}`の辞書になる)、(5) チェーン構成確認md、
+(6) `entry_id`/`n_chains`/`chain_ids`の`pandas.DataFrame`でチェーン数の違いを表示、
+(7) 分割結果の説明md、(8) 各構造の`split`結果(`"ligands"`)をそのまま`entry_id`列付きで
+結合した`pandas.DataFrame`で一覧表示、(9) コードごとに`bond_orders_restored`が常に
+同じ値になること(`TPO`は常に`False`、それ以外は常に`True`)を`groupby`で集計表示、
+(10) 網羅性確認md、(11) `chem.ligand.list_ligand_instances`(`exclude=WATER`)で構造ファイル
 自身から数えた水以外のHETATM残基インスタンス数と、`split`が実際に書き出したSDF数が
-一致すること(`assert`)を3構造それぞれで確認、(9) リガンドフリー蛋白質PDBの確認md、
-(10) `"protein"`辞書の各チェーンファイルに対して再度`list_ligand_instances`を実行し
-水以外のHETATM残基が0件であることを表示、(11) 阻害剤比較md、(12) 主要阻害剤
-(`BIR`/`TI1`/`OIR`)のSDFを読み込み直し、原子数・芳香族原子数・
-`chem.ligand.molecular_weight`/`qed`・SMILESを`pandas.DataFrame`で比較、(13) 可視化md、
-(14) `1R1H`のリガンドフリー蛋白質(チェーンA、cartoon)と`BIR`のSDF(stick)をpy3Dmolで
-重ねて表示(座標系が`split`前後でずれていないことの視覚的確認)。
+一致すること(`assert`)を9構造それぞれで確認、(12) リガンドフリー蛋白質PDBの確認md、
+(13) `"protein"`辞書の全チェーンファイル(計28ファイル)に対して再度`list_ligand_instances`
+を実行し水以外のHETATM残基が0件であることを`assert`、(14) `TPO`/阻害剤比較md、
+(15) `4BCF`の`TPO`(`bond_orders_restored=False`)と`T6Q`(`True`)のSDFを読み込み直し、
+ボンドタイプ集合(前者は`{"SINGLE"}`のみ、後者は`AROMATIC`を含む)を比較、(16) 阻害剤SAR比較md、
+(17) `T6Q`/`T7Z`/`T3E`/`T9N`/`TJF`5化合物についてコードごとに1回だけSDFを読み込み直し、
+`bound_to_entries`(その化合物が結合していた構造id、重複除去してソート)・原子数・
+`chem.ligand.molecular_weight`/`qed`・SMILESを`pandas.DataFrame`で比較(`T6Q`/`T7Z`/`T3E`/`T9N`は
+CDK9・CDK2の両方に、`TJF`はCDK2のみに結合していることが`bound_to_entries`列に現れる)、
+(18) 可視化md、(19) 4チェーン構造`4BCK`の蛋白質PDB4ファイルをチェーンごとに色分けした
+cartoonとして、両キナーゼコピー(チェーンA/C)に結合した阻害剤`T3E`のSDF(stick)を
+py3Dmolで重ねて表示。
 
 ## 注意
 
@@ -222,10 +235,14 @@ HOH, WAT, DOD
   による生の単結合SDFとして書き出され(`bond_orders_restored=False`)、かつ蛋白質PDB側からは
   正しく取り除かれること)を、`chem.ligand.extract`の`requests.get`を`monkeypatch`することで
   ネットワーク不要なオフラインテストとして追加する。実データでの動作確認は
-  `1R1H`/`1R1I`/`1R1J`(ネプリライシン+低分子阻害剤、糖鎖、亜鉛イオン)で`split`を実行し、
-  `NAG`(糖鎖)3残基・`ZN`・主要阻害剤(`BIR`/`TI1`/`OIR`)の計5インスタンス全てが
+  `4BCF`/`4BCH`/`4BCI`/`4BCJ`(CDK9-サイクリンT複合体、2チェーン)・
+  `4BCK`/`4BCM`/`4BCN`/`4BCO`/`4BCQ`(CDK2-サイクリンA複合体、4チェーン)の計9構造で
+  `split`を実行し、活性化ループのリン酸化トレオニン`TPO`(主鎖内の修飾残基)・低分子阻害剤
+  (`T6Q`/`T7Z`/`T3E`/`T9N`/`TJF`)・結晶化添加剤(`GOL`/`SGM`/`SO4`)の全インスタンスが
   (構造ファイル自身から`list_ligand_instances`で数えた件数と一致する形で)1つも欠けずSDF化され、
-  `NAG`は`bond_orders_restored=False`(生の単結合)、`ZN`と主要阻害剤は`True`(結合次数復元済み)
-  になり、後者について分子量・QEDが計算できることを`notebooks/neprilysin_split.ipynb`の実行で
-  確認した
+  `TPO`は9構造・全14インスタンスにわたって一貫して`bond_orders_restored=False`(生の単結合)、
+  それ以外は全て`True`(結合次数復元済み)になること、2/4チェーンいずれの構成でも蛋白質PDBが
+  正しくチェーンごとに分割され水以外のHETATM残基が残らないこと、`T6Q`/`T7Z`/`T3E`/`T9N`が
+  CDK9・CDK2の両方に、`TJF`がCDK2のみに結合しているという既知の実験事実が
+  `bound_to_entries`集計に正しく現れることを`notebooks/cdk9_cdk2_split.ipynb`の実行で確認した
 - テストは`tests/test_protein_align.py`・`tests/test_protein_pocket.py`にネットワーク・外部バイナリ(fpocket)不要な範囲(シーケンスマッチングロジック、`_matched_ca_pairs`が返す`identity`について同一配列で`1.0`・ギャップを含む場合はギャップ位置を分母/分子どちらからも除外・ギャップなしミスマッチを含む場合は分母に数えて分子には数えないこと、`align()`の戻り値が`{"rmsd":..., "identity":...}`の形でreferenceは`{"rmsd": 0.0, "identity": 1.0}`になること、`_best_matching_chain_alignment`が「マッチ位置数は多いが一致度が低い大きなチェーン」より「短くても一致度が高いチェーン」を選ぶこと(`3B9F`相当の合成データで再現)、`align()`をエンドツーエンドで実行してもサイズ最大の無関係なチェーンではなく正しいチェーンが選ばれ`identity`が高くなること、リガンド自動検出・HETコード判定・ファイル判定の分岐、ポケット選択の距離計算、`_info.txt`パーサ、fpocket未インストール時のエラーメッセージ、`_pocket_atm_paths`/`_pocket_result`の単体動作(`pocket{N}_vert.pqr`が存在する/しない両方のケース)、`_parse_pocket_spheres`が合成PQRテキストから`x`/`y`/`z`/`radius`を正しく取り出すこと、`list_pockets`を`_run_fpocket`を`monkeypatch`で偽の出力ディレクトリに差し替えて実行し`druggability_thres=None`なら全ポケットが`druggability_score`降順(値なしは最後)で返ること・デフォルト(`0.1`)では値なし/閾値未満のポケットが除外されること・`druggability_thres`を明示指定すればその閾値で絞り込まれること、`WATER`が`SOLVENT_AND_IONS`の真部分集合であること)のみ追加する。実際のBio.PDB構造アラインメントとfpocket実行は、簡易的な合成PDBテキスト(固定カラム位置で手書きしたATOM/HETATMレコード)を使ったオフラインテストと、実データでの手動実行確認(3PTB+BENでPocket 1が選ばれAsp189・Ser195が残基リストに含まれること、AlphaFold予測構造(リガンド無し)で`list_pockets`が複数候補を返し、そのうち`druggability_score >= 0.2`の3件を`spheres`経由でHTMLに書き出しブラウザで表示確認したところ、cartoon上にポケットごとに色分けされた充填体積として描画されることを確認済み)の組み合わせで検証する
