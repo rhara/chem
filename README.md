@@ -178,6 +178,17 @@ pocket = protein.find_pocket(
 # Or, for a structure with no bound ligand at all (e.g. an AlphaFold
 # prediction), list every candidate pocket fpocket finds instead.
 pockets = protein.list_pockets("af_data/AF-P00734-F1.pdb")
+
+# Split a structure into a ligand-free protein PDB and one SDF per non-water
+# HETATM ligand instance (ions/sugars/additives included) -- e.g. to prep a
+# receptor/ligand pair for docking.
+split_result = protein.split(
+    "data/1R1H.pdb",
+    split_chains=False,  # True writes one protein PDB per chain instead, chain id in the filename
+    outdir="split",
+)
+# split_result["protein"] -> "split/1R1H_protein.pdb"
+# split_result["ligands"] -> [{"path": "split/1R1H_ligand_BIR_A2001.sdf", "code": "BIR", ...}, ...]
 ```
 
 `align` selects each non-reference structure's chain by whichever best matches the
@@ -226,6 +237,20 @@ with no bound ligand to anchor on. Each entry is shaped exactly like a single
 reports dozens of low-quality cavities on a typical structure, so `druggability_thres`
 (default `0.1`) drops any pocket scoring below it, or with no score at all;
 pass `None` to keep everything unfiltered.
+
+`split` decomposes a structure file into a ligand-free protein (water kept,
+everything else HETATM stripped) and one proper RDKit-backed SDF molecule per
+non-water HETATM residue instance -- real ligands, ions (`ZN`), glycosylation
+sugars (`NAG`), crystallization additives, all of it, each written out via
+`chem.ligand.load_ligand` (bond orders/aromaticity restored against the PDB
+Chemical Component Dictionary). `split_chains=True` writes one protein PDB
+per chain instead of one file with every chain together, the chain id folded
+into the filename. As with `chem.ligand.load_ligand` directly, an instance
+with no matching bond-order template (e.g. a covalently-linked peptidomimetic
+ligand, or incomplete crystallographic density) is skipped with a warning
+rather than aborting the whole split -- check `len(result["ligands"])`
+against `chem.ligand.list_ligand_instances(structure_path, exclude=protein.WATER)`
+if silent skips need to be caught.
 
 ## chem.ligand — extract a ligand and score its drug-likeness
 

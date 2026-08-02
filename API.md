@@ -301,6 +301,36 @@ single `find_pocket` result (`pocket_id`/`score`/`druggability_score`/
 `volume`/`residues`/`spheres`/`info`), sorted by `druggability_score`
 descending.
 
+### `protein.split(structure_path, split_chains=False, outdir="split")`
+
+Split a structure file into a ligand-free protein PDB and one SDF file per
+non-water HETATM ligand instance — e.g. to prep a receptor/ligand pair for
+docking.
+
+- `structure_path` — path to a PDB/CIF structure file.
+- `split_chains` — if `True`, write one protein PDB per chain, its filename
+  including the chain id, instead of a single PDB with every chain together.
+  Default `False`.
+- `outdir` — destination directory; created if missing. Default `"split"`.
+
+Returns a dict:
+
+- `"protein"` — the protein PDB path (`split_chains=False`), or a
+  `{chain_id: path}` dict, one entry per chain (`split_chains=True`). Water
+  is kept; every other HETATM residue — real ligands, ions, crystallization
+  additives, glycosylation sugars, alike — is stripped, since those are
+  exactly what end up in `"ligands"` below instead.
+- `"ligands"` — list of `{"path", "code", "chain", "resnum", "icode"}`, one
+  entry per non-water HETATM residue *instance* (see
+  `ligand.list_ligand_instances`) — e.g. two copies of the same ligand code
+  bound to different chains produce two entries, each its own SDF file. Each
+  molecule's 3D coordinates come straight from `structure_path`, with bond
+  orders/aromaticity restored against the PDB Chemical Component Dictionary
+  (see `ligand.load_ligand`). An instance `load_ligand` can't resolve a
+  template for (e.g. a covalently-linked peptidomimetic ligand, or incomplete
+  crystallographic density) is skipped with a warning (unless quiet) rather
+  than aborting the whole split.
+
 ### `protein.SOLVENT_AND_IONS`
 
 A `frozenset` of common crystallization solvent/ion/additive HET codes (not
