@@ -301,7 +301,7 @@ single `find_pocket` result (`pocket_id`/`score`/`druggability_score`/
 `volume`/`residues`/`spheres`/`info`), sorted by `druggability_score`
 descending.
 
-### `protein.split(structure_path, all_chains=False, outdir="split")`
+### `protein.split(structure_path, all_chains=False, remove_water=False, outdir="split")`
 
 Split a structure file into a ligand-free protein PDB and one SDF file per
 non-water HETATM ligand instance — e.g. to prep a receptor/ligand pair for
@@ -310,14 +310,17 @@ docking.
 - `structure_path` — path to a PDB/CIF structure file.
 - `all_chains` — if `True`, write a single protein PDB with every chain
   together instead of one PDB per chain. Default `False` (split by chain).
+- `remove_water` — if `True`, also strip water (HETATM `HOH`/`WAT`/`DOD`) out
+  of the protein PDB. Default `False` (water is kept).
 - `outdir` — destination directory; created if missing. Default `"split"`.
 
 Returns a dict:
 
 - `"protein"` — a `{chain_id: path}` dict, one entry per chain
   (`all_chains=False`, the default), or the single protein PDB path
-  (`all_chains=True`). Water is kept; every other HETATM residue — real
-  ligands, ions, crystallization additives, glycosylation sugars, alike — is
+  (`all_chains=True`). By default water is kept — pass `remove_water=True` to
+  strip it out too. Every other HETATM residue — real ligands, ions,
+  crystallization additives, glycosylation sugars, alike — is always
   stripped, since those are exactly what end up in `"ligands"` below instead.
 - `"ligands"` — list of `{"path", "code", "chain", "resnum", "icode",
   "bond_orders_restored"}`, one entry per non-water HETATM residue *instance*

@@ -137,21 +137,22 @@ AlphaFold予測構造のようにリガンドが一切結合していない構�
 
 ```python
 from chem import protein
-protein.split(structure_path, all_chains=False, outdir="split")
+protein.split(structure_path, all_chains=False, remove_water=False, outdir="split")
 ```
 
 構造ファイルを、ドッキング等の下流処理用に (1) リガンドフリーの蛋白質PDBと (2) 水以外の各HETATM残基インスタンス**全て**をSDF化したファイル群、に分割する。「全て」が重要な点で、結合次数テンプレートが見つからないインスタンス(共有結合した糖鎖・ペプチド様リガンドなど)であってもSDF自体は必ず書き出す — 当初の実装は`chem.ligand.load_ligand`が`ValueError`を投げたインスタンスをスキップしていたが、リポジトリ所有者から「NAGもSDFに書き出してほしい。水以外の全てのHETATMを書き出す」という明示的な訂正が入り、結合次数を復元できない場合は代わりに生の(単結合のみの)結合情報で書き出すよう変更した
 
 - `structure_path`: PDB/CIF構造ファイルのパス
 - `all_chains`: `True`にすると、蛋白質PDBをチェーンごとに分割せず、全チェーンをまとめた1ファイルにする。デフォルト`False`(=デフォルトはチェーンごとの分割 — 当初`split_chains=True`でオプトインする設計にしていたが、リポジトリ所有者から「デフォルトをチェーン単位のsplitにし、まとめたい場合だけ`all_chains=True`を指定する形にしたい」という明示的な訂正が入り、デフォルトの意味を反転した)
+- `remove_water`: `True`にすると、蛋白質PDBから水(HETATM `HOH`/`WAT`/`DOD`)も取り除く。デフォルト`False`(結晶水は残す)。リポジトリ所有者から「splitの際の水分子は削除するオプション(`remove_water=False`)を追加してほしい」という明示的な要望が入り追加した — デフォルトは既存動作(水を残す)のまま、オプトインで取り除けるようにする形
 - `outdir`: 出力先ディレクトリ(存在しなければ作成)。デフォルト`"split"`
 - 戻り値: 以下のキーを持つ`dict`
-  - `"protein"`: `all_chains=False`(デフォルト)なら`{チェーンID: パス}`の辞書、`True`なら蛋白質PDBのパス(文字列)。結晶水は残し、それ以外のHETATM残基(実際のリガンド・イオン・糖鎖修飾・結晶化添加剤など)は全て取り除く — それらは代わりに`"ligands"`側でSDF化されるため
-  - `"ligands"`: `[{"path", "code", "chain", "resnum", "icode", "bond_orders_restored"}, ...]`。水以外のHETATM残基*インスタンス*ごとに**必ず**1エントリ(`chem.ligand.list_ligand_instances`と同じ粒度 — 同じコードのリガンドが複数チェーンに結合していれば別エントリになる。スキップは一切ない)。各分子の3D座標は`structure_path`そのまま。`chem.ligand.load_ligand`がPDB Chemical Component Dictionaryのテンプレートと照合して結合次数・芳香族性を復元できた場合は`bond_orders_restored=True`でその分子を、できなかった場合(共有結合した糖鎖修飾やペプチド様リガンドが、遊離型テンプレートに対して結合部位の原子が欠けている場合や、密度が不完全な残基など)は`bond_orders_restored=False`で、原子座標間の距離から単純に推定した単結合のみ・芳香族性なしの生の結合情報(quietでない限り警告を出す)を、それぞれSDFとして書き出す
+  - `"protein"`: `all_chains=False`(デフォルト)なら`{チェーンID: パス}`の辞書、`True`なら蛋白質PDBのパス(文字列)。デフォルト(`remove_water=False`)では結晶水は残し、それ以外のHETATM残基(実際のリガンド・イオン・糖鎖修飾・結晶化添加剤など)は全て取り除く — それらは代わりに`"ligands"`側でSDF化されるため。`remove_water=True`なら水も同様に取り除く
+  - `"ligands"`: `[{"path", "code", "chain", "resnum", "icode", "bond_orders_restored"}, ...]`。水以外のHETATM残基*インスタンス*ごとに**必ず**1エントリ(`chem.ligand.list_ligand_instances`と同じ粒度 — 同じコードのリガンドが複数チェーンに結合していれば別エントリになる。スキップは一切ない)。各分子の3D座標は`structure_path`そのまま。`chem.ligand.load_ligand`がPDB Chemical Component Dictionaryのテンプレートと照合して結合次数・芳香族性を復元できた場合は`bond_orders_restored=True`でその分子を、できなかった場合(共有結合した糖鎖修飾やペプチド様リガンドが、遊離型テンプレートに対して結合部位の原子が欠けている場合や、密度が不完全な残基など)は`bond_orders_restored=False`で、原子座標間の距離から単純に推定した単結合のみ・芳香族性なしの生の結合情報(quietでない限り警告を出す)を、それぞれSDFとして書き出す。`remove_water`の値に関わらず水そのものがSDF化されることは一切ない(そもそも`list_ligand_instances(..., exclude=WATER)`で列挙対象から除外している)
 
 ### アルゴリズム
 
-1. `structure_path`をBio.PDBで読み込み、`_hetero_residues`(`chem.protein.pocket`内、標準残基・水を除く全HETATM残基を返す既存のヘルパー)で「除外すべき残基」の集合を作る
+1. `structure_path`をBio.PDBで読み込み、`_hetero_residues`(`chem.protein.pocket`内、標準残基・水を除く全HETATM残基を返す既存のヘルパー)で「除外すべき残基」の集合を作る。`remove_water=True`なら、読み込み済みの`model`を直接走査して`residue.id[0] == "W"`(Bio.PDBの水のhetero flag)の残基も同じ除外集合に追加する(`_hetero_residues`は内部で`structure_path`を再パースするため、既に読み込み済みの`structure`/`model`から集めた残基オブジェクトを同じ集合に混ぜても、`Bio.PDB.Entity`の`__eq__`/`__hash__`が`full_id`(モデル・チェーン・残基番号)ベースであるため問題なく機能する)
 2. `Bio.PDB.PDBIO`と、上記の除外残基集合をチェックする`Select`サブクラス(`accept_residue`で`residue not in exclude_residues`、`accept_chain`で`all_chains=False`時のみ対象チェーンに絞り込み)を使い、蛋白質PDBを書き出す。`all_chains=True`なら`{outdir}/{stem}_protein.pdb`に1ファイル、デフォルト(`False`)ならチェーンごとに`{outdir}/{stem}_protein_{chain_id}.pdb`
 3. `chem.ligand.list_ligand_instances(structure_path, exclude=chem.protein.WATER)`で水以外の全HETATM残基インスタンスを列挙する(`WATER`を渡すことで、`list_ligand_instances`のデフォルト`exclude=SOLVENT_AND_IONS`とは異なり、イオンや糖鎖修飾も除外せず全て対象にする — ユーザーからの明示的な要望: 例`1R1H`の`BIR`(低分子阻害剤)・`NAG`(糖鎖)・`ZN`(イオン)は全て`split`の対象とする)
 4. 各インスタンスについて`chem.ligand.load_ligand(structure_path, code, chain=..., resnum=..., icode=...)`を呼ぶ
@@ -228,7 +229,9 @@ py3Dmolで重ねて表示。
 - テストは`tests/test_protein_split.py`に、`split`のロジック(合成PDBテキストに対する、
   デフォルト(`all_chains=False`)でのチェーンごとの蛋白質PDB書き出し・ファイル名への
   チェーンID埋め込みと水以外のHETATM残基除去、`outdir`未存在時の自動作成、
-  `all_chains=True`での単一蛋白質PDBへの統合書き出し、リガンドSDFの書き出しと
+  `all_chains=True`での単一蛋白質PDBへの統合書き出し、デフォルト(`remove_water=False`)では
+  蛋白質PDBに水が残り`remove_water=True`では水も取り除かれること(いずれの場合も水自体が
+  SDF化されることはない)、リガンドSDFの書き出しと
   `AssignBondOrdersFromTemplate`によるベンゼン環の芳香族性復元(`bond_orders_restored=True`)、
   テンプレートの取得に失敗するインスタンス(`requests.get`を`monkeypatch`で偽装し、該当コードに
   ディスクリプタを一切返さない)がスキップされずに`_pick_ligand_residue`+`_residue_to_raw_mol`

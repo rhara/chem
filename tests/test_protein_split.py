@@ -122,6 +122,19 @@ def test_split_writes_per_chain_protein_pdbs_by_default(structure_path, tmp_path
     assert codes_b == {"HOH"}  # OTH dropped
 
 
+def test_split_remove_water_strips_water_from_protein_pdb(structure_path, tmp_path):
+    outdir = str(tmp_path / "out")
+    kept = split(structure_path, outdir=str(tmp_path / "kept"))
+    removed = split(structure_path, remove_water=True, outdir=outdir)
+
+    assert _residue_hetero_codes(kept["protein"]["A"], "A") == {"HOH"}  # default: water kept
+    assert _residue_hetero_codes(removed["protein"]["A"], "A") == set()
+    assert _residue_hetero_codes(removed["protein"]["B"], "B") == set()
+
+    # water is never written as a ligand SDF either way, remove_water only affects the protein PDB
+    assert "HOH" not in {lig["code"] for lig in removed["ligands"]}
+
+
 def test_split_creates_outdir_if_missing(structure_path, tmp_path):
     outdir = str(tmp_path / "does" / "not" / "exist" / "yet")
     result = split(structure_path, outdir=outdir)

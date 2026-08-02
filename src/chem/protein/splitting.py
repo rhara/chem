@@ -9,8 +9,9 @@ from .pocket import WATER, _hetero_residues, _load_structure
 
 
 class _ProteinSelect(Select):
-    """Keeps polymer residues and water, drops every other HETATM residue --
-    those are written out separately as SDF ligands by `split` instead.
+    """Keeps polymer residues, dropping every residue in `exclude_residues`
+    (non-water HETATM residues -- those are written out separately as SDF
+    ligands by `split` instead -- plus water too when remove_water=True).
     Optionally restricted to a single chain.
     """
 
@@ -26,7 +27,7 @@ class _ProteinSelect(Select):
 
 
 @logged
-def split(structure_path, all_chains=False, outdir="split"):
+def split(structure_path, all_chains=False, remove_water=False, outdir="split"):
     """Split a structure file into a ligand-free protein PDB and one SDF file
     per non-water HETATM ligand instance -- e.g. to prep a receptor/ligand
     pair for docking.
@@ -34,15 +35,18 @@ def split(structure_path, all_chains=False, outdir="split"):
     structure_path: path to a PDB/CIF structure file.
     all_chains: if True, write a single protein PDB with every chain together
         instead of one PDB per chain. Default False (split by chain).
+    remove_water: if True, also strip water (HETATM HOH/WAT/DOD) out of the
+        protein PDB. Default False (water is kept).
     outdir: destination directory; created if missing.
 
     Returns a dict:
         "protein": a {chain_id: path} dict, one entry per chain
             (all_chains=False, the default), or the single protein PDB path
-            (all_chains=True). Water is kept (crystallographic waters are
-            routinely useful downstream); every other HETATM residue -- real
-            ligands, ions, crystallization additives, glycosylation sugars,
-            alike -- is stripped, since those are exactly what end up in
+            (all_chains=True). By default water is kept (crystallographic
+            waters are routinely useful downstream) -- pass remove_water=True
+            to strip it out too. Every other HETATM residue -- real ligands,
+            ions, crystallization additives, glycosylation sugars, alike --
+            is always stripped, since those are exactly what end up in
             "ligands" below instead.
         "ligands": list of {"path", "code", "chain", "resnum", "icode",
             "bond_orders_restored"}, one entry per non-water HETATM residue
@@ -74,6 +78,8 @@ def split(structure_path, all_chains=False, outdir="split"):
     structure = _load_structure(structure_path)
     model = next(structure.get_models())
     exclude_residues = set(_hetero_residues(structure_path))
+    if remove_water:
+        exclude_residues.update(res for chain in model for res in chain if res.id[0] == "W")
 
     io = PDBIO()
     io.set_structure(structure)

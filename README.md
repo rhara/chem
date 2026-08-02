@@ -185,6 +185,7 @@ pockets = protein.list_pockets("af_data/AF-P00734-F1.pdb")
 split_result = protein.split(
     "data/1R1H.pdb",
     all_chains=False,  # True writes a single protein PDB with every chain together instead
+    remove_water=False,  # True also strips water out of the protein PDB
     outdir="split",
 )
 # split_result["protein"] -> {"A": "split/1R1H_protein_A.pdb"}
@@ -239,8 +240,8 @@ reports dozens of low-quality cavities on a typical structure, so `druggability_
 (default `0.1`) drops any pocket scoring below it, or with no score at all;
 pass `None` to keep everything unfiltered.
 
-`split` decomposes a structure file into a ligand-free protein (water kept,
-everything else HETATM stripped) and one SDF molecule per non-water HETATM
+`split` decomposes a structure file into a ligand-free protein (water kept by
+default, everything else HETATM stripped) and one SDF molecule per non-water HETATM
 residue instance -- real ligands, ions (`ZN`), glycosylation sugars (`NAG`),
 crystallization additives, all of it, every single one. Each is written out
 via `chem.ligand.load_ligand` when possible (bond orders/aromaticity restored
@@ -254,7 +255,9 @@ written instead (`bond_orders_restored=False`) -- every instance still gets
 an SDF either way, just not always with corrected bonds. By default the
 protein PDB is written one file per chain, the chain id folded into the
 filename; `all_chains=True` writes a single file with every chain together
-instead.
+instead. `remove_water=True` additionally strips water out of the protein
+PDB (off by default, since crystallographic waters are routinely useful
+downstream).
 
 ## chem.ligand — extract a ligand and score its drug-likeness
 
