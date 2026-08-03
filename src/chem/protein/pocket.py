@@ -7,7 +7,7 @@ import sys
 import tempfile
 
 import numpy as np
-from Bio.PDB import MMCIFParser, PDBParser
+from Bio.PDB import MMCIFParser, NeighborSearch, PDBParser
 from rdkit import Chem
 
 from ..verbosity import is_quiet, logged
@@ -106,6 +106,52 @@ def _resolve_ligand_atoms(structure_path, ligand):
     if re.match(r"^[A-Za-z0-9]{1,3}$", ligand):
         return _explicit_code_ligand(structure_path, ligand)
     raise ValueError(f"could not interpret ligand={ligand!r} as a file path or a 1-3 character PDB HET code")
+
+
+@logged
+def residues_near(structure_path, ligands, radius=8.0):
+    """Protein residues in `structure_path` with at least one atom within
+    `radius` Angstroms of any atom in `ligands` -- a simple distance-based
+    active-site definition, unlike `find_pocket`/`list_pockets` (which run
+    fpocket's cavity detection). Handy when the ligand(s) already have their
+    own file(s) in the same coordinate frame as `structure_path` -- e.g. the
+    ligand-free protein PDB and per-ligand SDF(s) chem.protein.split() writes
+    out, optionally after chem.protein.apply_transform()/
+    chem.ligand.apply_transform() moved both into a shared reference frame.
+
+    structure_path: PDB/CIF file. HETATM residues in it (water, ligands,
+        ions -- if any are still present) are never returned, even if within
+        radius: this only ever selects polymer (ATOM) residues.
+    ligands: one ligand file path, or a list of them (.pdb/.sdf/.mol/.mol2,
+        3D coordinates already in the same frame as `structure_path`).
+    radius: distance threshold in Angstroms, inclusive. Default 8.0.
+
+    Returns a list of {"chain", "resnum", "icode", "resname"} (icode is ""
+    when the residue has no PDB insertion code), sorted by (chain, resnum,
+    icode) -- same shape as find_pocket()'s "residues".
+    """
+    if isinstance(ligands, (str, os.PathLike)):
+        ligand_paths = [ligands]
+    else:
+        ligand_paths = list(ligands)
+    ligand_coords = np.concatenate([_load_external_ligand_coords(p)[0] for p in ligand_paths])
+
+    structure = _load_structure(structure_path)
+    atoms = [a for a in next(structure.get_models()).get_atoms() if a.get_parent().id[0] == " "]
+    if not atoms:
+        return []
+    ns = NeighborSearch(atoms)
+
+    residues = {}
+    for coord in ligand_coords:
+        for atom in ns.search(coord, radius):
+            res = atom.get_parent()
+            residues[(res.parent.id, res.id[1], res.id[2].strip())] = res
+
+    return [
+        {"chain": chain, "resnum": resnum, "icode": icode, "resname": residues[(chain, resnum, icode)].get_resname()}
+        for chain, resnum, icode in sorted(residues)
+    ]
 
 
 def _run_fpocket(structure, workdir):

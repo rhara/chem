@@ -271,3 +271,62 @@ def test_run_fpocket_missing_binary_raises_helpful_error(tmp_path, monkeypatch):
     dummy.write_text("END\n")
     with pytest.raises(RuntimeError, match="fpocket executable not found"):
         pk._run_fpocket(str(dummy), str(tmp_path))
+
+
+@pytest.fixture
+def protein_and_ligand_files(tmp_path):
+    # CA at x=0 (within default radius=8 of the ligand at x=1), x=9.5 (just
+    # outside radius=8 but within radius=10), x=20 (far); a water molecule
+    # near the ligand (must never be returned, even though it's within radius).
+    lines = [
+        _atom_line(1, "CA", "ALA", "A", 1, 0.0, 0.0, 0.0),
+        _atom_line(2, "CA", "GLY", "A", 2, 9.5, 0.0, 0.0),
+        _atom_line(3, "CA", "LEU", "A", 3, 20.0, 0.0, 0.0),
+        _atom_line(4, "O1", "HOH", "A", 300, 1.5, 0.0, 0.0, record="HETATM"),
+    ]
+    protein_path = tmp_path / "protein.pdb"
+    _write_pdb(protein_path, lines)
+
+    ligand_path = tmp_path / "ligand.pdb"
+    _write_pdb(ligand_path, [_atom_line(1, "C1", "LIG", "A", 200, 1.0, 0.0, 0.0, record="HETATM")])
+
+    return str(protein_path), str(ligand_path)
+
+
+def test_residues_near_finds_only_residues_within_radius(protein_and_ligand_files):
+    protein_path, ligand_path = protein_and_ligand_files
+    residues = pk.residues_near(protein_path, ligand_path, radius=8.0)
+
+    assert residues == [{"chain": "A", "resnum": 1, "icode": "", "resname": "ALA"}]
+
+
+def test_residues_near_excludes_hetatm_even_when_within_radius(protein_and_ligand_files):
+    protein_path, ligand_path = protein_and_ligand_files
+    residues = pk.residues_near(protein_path, ligand_path, radius=8.0)
+
+    assert all(r["resname"] != "HOH" for r in residues)
+
+
+def test_residues_near_wider_radius_includes_more_residues(protein_and_ligand_files):
+    protein_path, ligand_path = protein_and_ligand_files
+    residues = pk.residues_near(protein_path, ligand_path, radius=10.0)
+
+    assert {r["resnum"] for r in residues} == {1, 2}
+
+
+def test_residues_near_accepts_list_of_ligand_paths(tmp_path, protein_and_ligand_files):
+    protein_path, ligand_path = protein_and_ligand_files
+    second_ligand_path = tmp_path / "ligand2.pdb"
+    # Only within radius of residue 2 (resnum 2, at x=9.5), not residue 1.
+    _write_pdb(second_ligand_path, [_atom_line(1, "C1", "LIG", "A", 201, 9.7, 0.0, 0.0, record="HETATM")])
+
+    residues = pk.residues_near(protein_path, [ligand_path, str(second_ligand_path)], radius=8.0)
+
+    assert {r["resnum"] for r in residues} == {1, 2}
+
+
+def test_residues_near_returns_empty_when_nothing_in_range(protein_and_ligand_files):
+    protein_path, ligand_path = protein_and_ligand_files
+    residues = pk.residues_near(protein_path, ligand_path, radius=0.1)
+
+    assert residues == []
