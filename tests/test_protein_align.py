@@ -1,5 +1,6 @@
 import os
 
+import numpy as np
 import pytest
 
 import chem.protein.structural_align as pa
@@ -236,3 +237,86 @@ def test_identity_matrix_respects_explicit_chain(tmp_path):
     matrix = pa.identity_matrix([str(path_1), str(path_2)], chain="B")
 
     assert matrix[str(path_1)][str(path_2)] == 1.0
+
+
+def test_compute_transform_identity_when_already_superposed(tmp_path):
+    ref_path = tmp_path / "ref.pdb"
+    mobile_path = tmp_path / "mobile.pdb"
+    _write_three_residue_chain(ref_path, "A")
+    _write_three_residue_chain(mobile_path, "A")
+
+    transform = pa.compute_transform(str(mobile_path), str(ref_path))
+
+    assert transform["rmsd"] == pytest.approx(0.0, abs=1e-6)
+    assert transform["identity"] == 1.0
+    np.testing.assert_allclose(transform["rotation"], np.eye(3), atol=1e-5)
+    np.testing.assert_allclose(transform["translation"], [0.0, 0.0, 0.0], atol=1e-5)
+
+
+def test_compute_transform_recovers_pure_translation(tmp_path):
+    ref_path = tmp_path / "ref.pdb"
+    mobile_path = tmp_path / "mobile.pdb"
+    _write_three_residue_chain(ref_path, "A")
+    _write_three_residue_chain(mobile_path, "A", x_offset=10.0)
+
+    transform = pa.compute_transform(str(mobile_path), str(ref_path))
+
+    assert transform["rmsd"] == pytest.approx(0.0, abs=1e-6)
+    np.testing.assert_allclose(transform["rotation"], np.eye(3), atol=1e-5)
+    np.testing.assert_allclose(transform["translation"], [-10.0, 0.0, 0.0], atol=1e-5)
+
+
+def test_compute_transform_rejects_too_few_matched_residues(tmp_path):
+    ref_path = tmp_path / "ref.pdb"
+    mobile_path = tmp_path / "mobile.pdb"
+    _write_three_residue_chain(ref_path, "A")
+    _write_chain(mobile_path, "A", "AG")  # only 2 residues, below _MIN_MATCHED_RESIDUES
+
+    with pytest.raises(ValueError):
+        pa.compute_transform(str(mobile_path), str(ref_path))
+
+
+def test_compute_transform_honors_explicit_chain_ids(tmp_path):
+    ref_path = tmp_path / "ref.pdb"
+    _write_chain(ref_path, "A", "AGLVPSTCNQ")
+
+    mobile_path = tmp_path / "mobile.pdb"
+    _write_chain(mobile_path, "S", "MIFVHKRDEY", mode="w")  # unrelated, larger index
+    _write_chain(mobile_path, "A", "AGLVPSTCNQ", mode="a", x_offset=5.0)
+
+    transform = pa.compute_transform(
+        str(mobile_path), str(ref_path), mobile_chain="A", reference_chain="A"
+    )
+
+    assert transform["identity"] == 1.0
+    np.testing.assert_allclose(transform["translation"], [-5.0, 0.0, 0.0], atol=1e-5)
+
+
+def test_apply_transform_moves_every_atom_and_matches_compute_transform(tmp_path):
+    ref_path = tmp_path / "ref.pdb"
+    mobile_path = tmp_path / "mobile.pdb"
+    _write_three_residue_chain(ref_path, "A")
+    _write_three_residue_chain(mobile_path, "A", x_offset=10.0)
+
+    transform = pa.compute_transform(str(mobile_path), str(ref_path))
+    out_path = tmp_path / "moved.pdb"
+    result_path = pa.apply_transform(
+        str(mobile_path), transform["rotation"], transform["translation"], str(out_path)
+    )
+
+    assert result_path == str(out_path)
+    structure = pa._load_structure(str(out_path))
+    coords = np.array([atom.coord for atom in structure.get_atoms()])
+    ref_structure = pa._load_structure(str(ref_path))
+    ref_coords = np.array([atom.coord for atom in ref_structure.get_atoms()])
+    np.testing.assert_allclose(coords, ref_coords, atol=1e-4)
+
+
+def test_apply_transform_creates_missing_outdir(tmp_path):
+    path = tmp_path / "a.pdb"
+    _write_chain(path, "A", "AGL")
+
+    out_path = tmp_path / "nested" / "out.pdb"
+    pa.apply_transform(str(path), np.eye(3).tolist(), [0.0, 0.0, 0.0], str(out_path))
+
+    assert out_path.exists()

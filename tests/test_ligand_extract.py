@@ -1,3 +1,4 @@
+import numpy as np
 import pytest
 from rdkit import Chem
 from rdkit.Chem import AllChem
@@ -194,3 +195,39 @@ def test_qed_and_molecular_weight():
     mol = Chem.MolFromSmiles("c1ccccc1O")  # phenol
     assert 90 < le.molecular_weight(mol) < 96
     assert 0 < le.qed(mol) < 1
+
+
+def _write_ethane_sdf(path):
+    mol = Chem.AddHs(Chem.MolFromSmiles("CC"))
+    AllChem.EmbedMolecule(mol, randomSeed=1)
+    writer = Chem.SDWriter(str(path))
+    writer.write(mol)
+    writer.close()
+    return mol
+
+
+def test_apply_transform_translates_coordinates(tmp_path):
+    path = tmp_path / "ethane.sdf"
+    original = _write_ethane_sdf(path)
+    orig_coords = original.GetConformer().GetPositions()
+
+    out_path = tmp_path / "moved.sdf"
+    translation = [1.0, 2.0, 3.0]
+    result_path = le.apply_transform(str(path), np.eye(3).tolist(), translation, str(out_path))
+
+    assert result_path == str(out_path)
+    moved = next(Chem.SDMolSupplier(str(out_path), sanitize=False))
+    moved_coords = moved.GetConformer().GetPositions()
+    np.testing.assert_allclose(moved_coords, orig_coords + np.array(translation), atol=1e-4)
+
+
+def test_apply_transform_preserves_atom_count_and_creates_missing_outdir(tmp_path):
+    path = tmp_path / "ethane.sdf"
+    _write_ethane_sdf(path)
+
+    out_path = tmp_path / "nested" / "moved.sdf"
+    le.apply_transform(str(path), np.eye(3).tolist(), [0.0, 0.0, 0.0], str(out_path))
+
+    assert out_path.exists()
+    moved = next(Chem.SDMolSupplier(str(out_path), sanitize=False))
+    assert moved.GetNumAtoms() == 8  # ethane with explicit Hs

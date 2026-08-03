@@ -1,10 +1,12 @@
 import os
 import tempfile
 
+import numpy as np
 import requests
 from Bio.PDB import PDBIO, Select
 from rdkit import Chem
 from rdkit.Chem import AllChem, Descriptors, QED
+from rdkit.Geometry import Point3D
 
 from ..protein.pocket import SOLVENT_AND_IONS, _hetero_residues
 from ..verbosity import logged
@@ -172,6 +174,51 @@ def load_ligand(structure_path, ligand, chain=None, resnum=None, icode=None):
     residue = _pick_ligand_residue(structure_path, ligand, chain=chain, resnum=resnum, icode=icode)
     raw_mol = _residue_to_raw_mol(residue, ligand)
     return _assign_bond_orders(raw_mol, ligand)
+
+
+@logged
+def apply_transform(sdf_path, rotation, translation, outpath):
+    """Apply a rotation+translation -- as returned by
+    chem.protein.compute_transform -- to an SDF file's 3D coordinates and
+    write the result to `outpath`.
+
+    Complements chem.protein.apply_transform (for protein PDB chains): a
+    transform computed from one chain of a complex (e.g. via
+    chem.protein.compute_transform on the kinase chain that chem.protein.split
+    wrote out) can be reapplied here to that same entry's ligand SDF(s), so
+    the ligand ends up in the same coordinate frame as the aligned protein --
+    reconstituting the bound complex without needing a sequence to align the
+    ligand on.
+
+    sdf_path: SDF file to transform (e.g. a chem.protein.split ligand path).
+        Read with sanitize=False since some SDFs written by split() (those
+        with bond_orders_restored=False) can't survive sanitization.
+    rotation, translation: as returned by chem.protein.compute_transform's
+        "rotation"/"translation" -- applied in Biopython's convention,
+        `new_coord = old_coord @ rotation + translation`, matching
+        chem.protein.apply_transform so the same pair of matrices moves both
+        the protein and the ligand consistently.
+    outpath: destination SDF file path; parent directory created if missing.
+
+    Returns outpath.
+    """
+    mol = next(Chem.SDMolSupplier(sdf_path, sanitize=False))
+    rot = np.asarray(rotation)
+    tran = np.asarray(translation)
+
+    conf = mol.GetConformer()
+    coords = conf.GetPositions()
+    new_coords = coords @ rot + tran
+    for i, (x, y, z) in enumerate(new_coords):
+        conf.SetAtomPosition(i, Point3D(x, y, z))
+
+    outdir = os.path.dirname(outpath)
+    if outdir:
+        os.makedirs(outdir, exist_ok=True)
+    writer = Chem.SDWriter(outpath)
+    writer.write(mol)
+    writer.close()
+    return outpath
 
 
 def qed(mol):

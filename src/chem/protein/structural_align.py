@@ -1,6 +1,7 @@
 import os
 import sys
 
+import numpy as np
 from Bio.Align import PairwiseAligner
 from Bio.PDB import MMCIFParser, PDBIO, PDBParser
 from Bio.PDB.Polypeptide import index_to_one, is_aa, three_to_index
@@ -217,6 +218,98 @@ def align(structures, reference=None, chain=None, outdir="aligned"):
         results[path] = {"rmsd": round(float(sup.rms), 3), "identity": round(identity, 3)}
 
     return results
+
+
+@logged
+def compute_transform(mobile, reference, mobile_chain=None, reference_chain=None):
+    """Compute the rigid-body superposition of `mobile`'s chain onto
+    `reference`'s chain, without moving or writing anything.
+
+    Unlike align(), which transforms and re-writes a whole structure file in
+    one step, this hands back the raw rotation/translation instead -- e.g. to
+    align only one chain of a multi-chain complex (say, a kinase written out
+    by chem.protein.split) onto a common reference, and then reuse that exact
+    transform (via apply_transform) on that same entry's other chains
+    (a bound cyclin) and ligand SDFs (chem.ligand.apply_transform), so the
+    whole assembly ends up superposed as if it had all been aligned together
+    -- rather than aligning each piece independently, which (for chains) would
+    normally give an equivalent result, but for ligands has no sequence to
+    align on at all.
+
+    mobile, reference: PDB/CIF file paths.
+    mobile_chain, reference_chain: optional chain ids to use (default: for
+        `reference`, its primary polymer chain -- the one with the most
+        standard amino acid residues, same as align()'s reference handling;
+        for `mobile`, whichever chain actually matches the reference best --
+        see align()'s `chain` parameter for why identity, not size, decides
+        this).
+
+    Returns {"rotation": 3x3 nested list, "translation": 3-element list,
+        "rmsd": float, "identity": float}, all in Biopython's
+        Superimposer/Atom.transform convention: `new_coord = old_coord @
+        rotation + translation` (row-vector coordinates) -- pass rotation and
+        translation straight to apply_transform. rmsd is in Angstroms over the
+        sequence-matched CA atoms; identity is the fraction of matched
+        (gap-free) positions with an identical residue (see align()). Raises
+        ValueError if either structure has too few residues, or too few of
+        them match the other, to superpose on.
+    """
+    ref_structure = _load_structure(reference)
+    ref_ch = _select_chain(next(ref_structure.get_models()), reference_chain)
+    ref_seq, ref_ca = _chain_seq_and_ca(ref_ch)
+    if len(ref_ca) < _MIN_MATCHED_RESIDUES:
+        raise ValueError(f"reference structure {reference} has too few residues to align on")
+
+    mob_structure = _load_structure(mobile)
+    mob_model = next(mob_structure.get_models())
+    if mobile_chain is not None:
+        mob_ch = _select_chain(mob_model, mobile_chain)
+        mob_seq, mob_ca = _chain_seq_and_ca(mob_ch)
+        ref_pts, mob_pts, identity = _matched_ca_pairs(ref_seq, ref_ca, mob_seq, mob_ca)
+    else:
+        ref_pts, mob_pts, identity = _best_matching_chain_alignment(mob_model, ref_seq, ref_ca)
+    if len(ref_pts) < _MIN_MATCHED_RESIDUES:
+        raise ValueError(f"only {len(ref_pts)} residue(s) of {mobile} matched {reference}")
+
+    sup = Superimposer()
+    sup.set_atoms(ref_pts, mob_pts)
+    rot, tran = sup.rotran
+    return {
+        "rotation": rot.tolist(),
+        "translation": tran.tolist(),
+        "rmsd": round(float(sup.rms), 3),
+        "identity": round(identity, 3),
+    }
+
+
+@logged
+def apply_transform(structure_path, rotation, translation, outpath):
+    """Apply a rotation+translation -- as returned by compute_transform -- to
+    every atom of a PDB/CIF structure file, and write the result as PDB.
+
+    structure_path: PDB/CIF file to transform (e.g. a chem.protein.split
+        chain PDB that wasn't itself used to compute the transform, such as a
+        bound partner chain).
+    rotation, translation: as returned by compute_transform's "rotation"/
+        "translation" -- applied in Biopython's convention, `new_coord =
+        old_coord @ rotation + translation`.
+    outpath: destination PDB file path; parent directory created if missing.
+
+    Returns outpath.
+    """
+    structure = _load_structure(structure_path)
+    rot = np.asarray(rotation, dtype="f")
+    tran = np.asarray(translation, dtype="f")
+    for atom in structure.get_atoms():
+        atom.transform(rot, tran)
+
+    outdir = os.path.dirname(outpath)
+    if outdir:
+        os.makedirs(outdir, exist_ok=True)
+    io = PDBIO()
+    io.set_structure(structure)
+    io.save(outpath)
+    return outpath
 
 
 @logged
