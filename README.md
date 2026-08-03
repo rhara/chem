@@ -177,6 +177,21 @@ identity_results = protein.identity_matrix(
     chain=None,  # override auto chain selection, same as align()'s
 )
 
+# Like align(), but for a single chain pair, and hands back the raw rotation/
+# translation instead of writing anything -- e.g. to align just one chain of a
+# multi-chain complex (a kinase written out by protein.split) onto a common
+# reference, then reuse the exact same transform on pieces that have no
+# sequence of their own to align on (a bound partner chain, a ligand SDF).
+t = protein.compute_transform(
+    "split/4BCK_protein_A.pdb", "split/4BCF_protein_A.pdb",
+    mobile_chain=None, reference_chain=None,  # same auto-selection as align()
+)
+# t -> {"rotation": [[...], [...], [...]], "translation": [...], "rmsd": 0.42, "identity": 0.987}
+
+# Apply that transform to any other PDB/CIF file (e.g. the same entry's bound
+# cyclin chain) so it ends up in the reference's frame too.
+protein.apply_transform("split/4BCK_protein_B.pdb", t["rotation"], t["translation"], "aligned/4BCK_protein_B.pdb")
+
 # Run fpocket on a structure and identify the pocket nearest a ligand.
 pocket = protein.find_pocket(
     "aligned/1PPB.pdb",
@@ -187,6 +202,13 @@ pocket = protein.find_pocket(
 # Or, for a structure with no bound ligand at all (e.g. an AlphaFold
 # prediction), list every candidate pocket fpocket finds instead.
 pockets = protein.list_pockets("af_data/AF-P00734-F1.pdb")
+
+# A lighter-weight alternative to find_pocket/list_pockets: every protein
+# residue with an atom within `radius` of a ligand file already sitting in
+# the same coordinate frame (e.g. protein.split/apply_transform output) --
+# no fpocket run needed. Returns the same {"chain", "resnum", "icode",
+# "resname"} shape as find_pocket's "residues".
+near = protein.residues_near("split/1R1H_protein_A.pdb", "split/1R1H_ligand_BIR_A2001.sdf", radius=8.0)
 
 # Split a structure into a ligand-free protein PDB (one per chain) and one SDF
 # per non-water HETATM ligand instance (ions/sugars/additives included) -- e.g.
@@ -236,6 +258,22 @@ before further analysis. A structure with no usable chain is skipped with a
 warning and left out of the matrix entirely (not even as a self-identity
 entry), same as `align`.
 
+`compute_transform` is `align`'s sequence-alignment-plus-Kabsch-fit step, split
+out as a standalone function that hands back the raw rotation/translation
+instead of writing a transformed structure file. Useful when a complex has
+already been broken into pieces with no sequence of their own to align on --
+e.g. `chem.protein.split`'s per-chain output: compute the transform from just
+the kinase chain, then reapply that exact same rotation/translation (via
+`apply_transform`, and `chem.ligand.apply_transform` for ligand SDFs) to the
+bound partner chain and ligand files from the same entry, reconstructing the
+whole assembly in the reference's frame without aligning each piece
+independently. Returns `{"rotation": ..., "translation": ..., "rmsd": ...,
+"identity": ...}` in Biopython's `Superimposer`/`Atom.transform` convention
+(`new_coord = old_coord @ rotation + translation`); raises `ValueError` if
+either structure has too few (or too few matching) residues to superpose on.
+`apply_transform` just applies a given rotation/translation to every atom of
+a PDB/CIF file and writes the result as PDB.
+
 `find_pocket` runs [fpocket](https://github.com/Discngine/fpocket) on a PDB file
 (fpocket requires legacy PDB format, which is what `align` always writes) and picks
 the fpocket pocket whose lining atoms are closest to a ligand's 3D coordinates. The
@@ -258,6 +296,15 @@ with no bound ligand to anchor on. Each entry is shaped exactly like a single
 reports dozens of low-quality cavities on a typical structure, so `druggability_thres`
 (default `0.1`) drops any pocket scoring below it, or with no score at all;
 pass `None` to keep everything unfiltered.
+
+`residues_near` is a simpler, fpocket-free alternative to `find_pocket`/
+`list_pockets`: just every polymer (`ATOM`) residue with at least one atom
+within `radius` Å of any atom in one or more ligand files (HETATM residues in
+`structure_path` itself are never returned, even if within range). Handy
+specifically when the ligand already has its own file in the same coordinate
+frame as the protein -- e.g. `chem.protein.split`'s protein PDB + ligand
+SDF(s), optionally moved into a shared frame first via
+`apply_transform`/`chem.ligand.apply_transform`.
 
 `split` decomposes a structure file into a ligand-free protein (water kept by
 default, everything else HETATM stripped) and one SDF molecule per non-water HETATM
@@ -299,6 +346,12 @@ mol = ligand.load_ligand("data/3RM0.pdb", inst["code"], chain=inst["chain"], res
 
 ligand.molecular_weight(mol)  # 499.6
 ligand.qed(mol)  # 0.29 -- Quantitative Estimate of Drug-likeness, 0-1
+
+# Move an SDF's 3D coordinates with a rotation/translation from
+# chem.protein.compute_transform (`t` from the chem.protein example above) --
+# e.g. to bring a chem.protein.split ligand SDF into the same frame as a
+# protein chain already moved with chem.protein.apply_transform.
+ligand.apply_transform("split/1R1H_ligand_BIR_A2001.sdf", t["rotation"], t["translation"], "aligned/1R1H_ligand_BIR_A2001.sdf")
 ```
 
 A residue that's really one piece of a covalently-linked multi-residue

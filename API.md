@@ -239,6 +239,48 @@ quiet) rather than raising.
 Large structures (e.g. cryo-EM assemblies with >26 chains or >99999 atoms)
 are not supported by the legacy PDB writer used here.
 
+### `protein.compute_transform(mobile, reference, mobile_chain=None, reference_chain=None)`
+
+Compute the rigid-body superposition of `mobile`'s chain onto `reference`'s
+chain, without moving or writing anything — the same underlying alignment
+`align` uses, but handed back as raw numbers instead of applied to a whole
+structure file. Lets you compute the transform from one chain of a
+multi-chain complex (e.g. a kinase chain written out by `chem.protein.split`)
+and reuse the exact same rotation/translation, via `apply_transform`, on that
+entry's other chains (a bound partner) and ligand SDFs
+(`chem.ligand.apply_transform`) — reconstructing a whole complex in a common
+frame, including pieces (partner chains, ligands) that have no sequence of
+their own to align on.
+
+- `mobile`, `reference` — PDB/CIF file paths.
+- `mobile_chain`, `reference_chain` — optional chain ids to use (default: for
+  `reference`, its primary polymer chain; for `mobile`, whichever chain
+  actually matches the reference best — same selection `align` uses for its
+  reference/`chain` handling).
+
+Returns `{"rotation": 3x3 nested list, "translation": 3-element list, "rmsd":
+float, "identity": float}`, in Biopython's `Superimposer`/`Atom.transform`
+convention (`new_coord = old_coord @ rotation + translation`, row-vector
+coordinates) — pass `rotation`/`translation` straight to `apply_transform`.
+`rmsd` is in Ångströms over the sequence-matched CA atoms; `identity` is the
+same definition `align` reports. Raises `ValueError` if either structure has
+too few residues, or too few of them match the other, to superpose on.
+
+### `protein.apply_transform(structure_path, rotation, translation, outpath)`
+
+Apply a rotation+translation — as returned by `compute_transform` — to every
+atom of a PDB/CIF structure file, and write the result as PDB.
+
+- `structure_path` — PDB/CIF file to transform (e.g. a `chem.protein.split`
+  chain PDB that wasn't itself used to compute the transform, such as a bound
+  partner chain).
+- `rotation`, `translation` — as returned by `compute_transform`'s
+  `"rotation"`/`"translation"`.
+- `outpath` — destination PDB file path; parent directory created if
+  missing.
+
+Returns `outpath`.
+
 ### `protein.identity_matrix(structures, chain=None)`
 
 Pairwise sequence identity across a set of structures — e.g. the per-chain
@@ -324,6 +366,28 @@ Returns a list of dicts, one per kept pocket, each shaped exactly like a
 single `find_pocket` result (`pocket_id`/`score`/`druggability_score`/
 `volume`/`residues`/`spheres`/`info`), sorted by `druggability_score`
 descending.
+
+### `protein.residues_near(structure_path, ligands, radius=8.0)`
+
+Protein residues in `structure_path` with at least one atom within `radius`
+Å of any atom in `ligands` — a simple distance-based active-site definition,
+unlike `find_pocket`/`list_pockets` (which run fpocket's cavity detection).
+Handy when the ligand(s) already have their own file(s) in the same
+coordinate frame as `structure_path` — e.g. the ligand-free protein PDB and
+per-ligand SDF(s) `chem.protein.split` writes out, optionally after
+`apply_transform`/`chem.ligand.apply_transform` moved both into a shared
+reference frame.
+
+- `structure_path` — PDB/CIF file. HETATM residues in it (water, ligands,
+  ions — if any are still present) are never returned, even if within
+  `radius`: this only ever selects polymer (ATOM) residues.
+- `ligands` — one ligand file path, or a list of them (`.pdb`/`.sdf`/`.mol`/
+  `.mol2`, 3D coordinates already in the same frame as `structure_path`).
+- `radius` — distance threshold in Å, inclusive. Default `8.0`.
+
+Returns a list of `{"chain", "resnum", "icode", "resname"}` (`icode` is `""`
+when the residue has no PDB insertion code), sorted by `(chain, resnum,
+icode)` — same shape as `find_pocket`'s `"residues"`.
 
 ### `protein.split(structure_path, all_chains=False, remove_water=False, outdir="split")`
 
@@ -425,6 +489,30 @@ chain/resnum/icode), or if no candidate template matches the extracted atoms
 peptidomimetic inhibitor built from linked amino-acid HETATM groups
 extracted on its own no longer has the same atoms as the free amino acid), or
 a residue with incomplete crystallographic density.
+
+### `ligand.apply_transform(sdf_path, rotation, translation, outpath)`
+
+Apply a rotation+translation — as returned by `chem.protein.compute_transform`
+— to an SDF file's 3D coordinates and write the result to `outpath`.
+Complements `chem.protein.apply_transform` (for protein PDB chains): a
+transform computed from one chain of a complex (e.g. via
+`chem.protein.compute_transform` on the kinase chain that `chem.protein.split`
+wrote out) can be reapplied here to that same entry's ligand SDF(s), so the
+ligand ends up in the same coordinate frame as the aligned protein —
+reconstituting the bound complex without needing a sequence to align the
+ligand on.
+
+- `sdf_path` — SDF file to transform (e.g. a `chem.protein.split` ligand
+  path). Read with `sanitize=False`, since some SDFs written by `split`
+  (`bond_orders_restored=False`) can't survive sanitization.
+- `rotation`, `translation` — as returned by `chem.protein.compute_transform`'s
+  `"rotation"`/`"translation"` — same convention as `chem.protein.apply_transform`,
+  so the same pair of matrices moves both the protein and the ligand
+  consistently.
+- `outpath` — destination SDF file path; parent directory created if
+  missing.
+
+Returns `outpath`.
 
 ### `ligand.qed(mol)`
 

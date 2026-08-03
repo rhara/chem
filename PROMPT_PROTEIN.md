@@ -1,13 +1,13 @@
-# chem.protein.summary / chem.protein.get_fasta / chem.protein.align / chem.protein.identity_matrix / chem.protein.find_pocket / chem.protein.list_pockets / chem.protein.split の再現プロンプト
+# chem.protein.summary / chem.protein.get_fasta / chem.protein.align / chem.protein.compute_transform / chem.protein.apply_transform / chem.protein.identity_matrix / chem.protein.find_pocket / chem.protein.list_pockets / chem.protein.residues_near / chem.protein.split の再現プロンプト
 
-`chem`リポジトリの`chem`パッケージ内に、構造解析用のサブパッケージ`protein`(`chem.protein`)を追加し、UniProtエントリのアノテーション取得(`summary`)とFASTA配列取得(`get_fasta`)、複数構造のシーケンス・3Dアラインメント(`align`)、任意の構造集合の総当たり配列一致度マトリクス(`identity_matrix`)、リガンド近傍のfpocketポケット・構成残基特定(`find_pocket`)、リガンドを持たない構造向けの全候補ポケット列挙(`list_pockets`)、構造ファイルをリガンドフリーの蛋白質PDBと各HETATM残基のSDFに分割する(`split`)を実装するための指示。`chem.rcsb`・`chem.alphafold`でダウンロードした構造をそのまま入力にできることを想定する。
+`chem`リポジトリの`chem`パッケージ内に、構造解析用のサブパッケージ`protein`(`chem.protein`)を追加し、UniProtエントリのアノテーション取得(`summary`)とFASTA配列取得(`get_fasta`)、複数構造のシーケンス・3Dアラインメント(`align`)、そのアラインメントの回転・並進だけを取り出して他の構造ファイルに使い回す(`compute_transform`/`apply_transform`)、任意の構造集合の総当たり配列一致度マトリクス(`identity_matrix`)、リガンド近傍のfpocketポケット・構成残基特定(`find_pocket`)、リガンドを持たない構造向けの全候補ポケット列挙(`list_pockets`)、リガンドファイルからの単純な距離ベース活性部位残基抽出(`residues_near`)、構造ファイルをリガンドフリーの蛋白質PDBと各HETATM残基のSDFに分割する(`split`)を実装するための指示。`chem.rcsb`・`chem.alphafold`でダウンロードした構造をそのまま入力にできることを想定する。
 
 ## パッケージ構成
 
-- `src/chem/protein/__init__.py`: `from .annotation import get_fasta, summary` / `from .structural_align import align, identity_matrix` / `from .pocket import find_pocket, list_pockets` / `from .splitting import split` として再エクスポート
+- `src/chem/protein/__init__.py`: `from .annotation import get_fasta, summary` / `from .structural_align import align, apply_transform, compute_transform, identity_matrix` / `from .pocket import SOLVENT_AND_IONS, WATER, find_pocket, list_pockets, residues_near` / `from .splitting import split` として再エクスポート
 - `src/chem/protein/annotation.py`: `summary`・`get_fasta`の実装
-- `src/chem/protein/structural_align.py`: `align`・`identity_matrix`の実装(`identity_matrix`は`align`が使う`_load_structure`/`_select_chain`/`_chain_seq_and_ca`/`_matched_ca_pairs`をそのまま再利用するため同じファイルに置く)
-- `src/chem/protein/pocket.py`: `find_pocket`の実装
+- `src/chem/protein/structural_align.py`: `align`・`compute_transform`・`apply_transform`・`identity_matrix`の実装(いずれも`_load_structure`/`_select_chain`/`_chain_seq_and_ca`/`_matched_ca_pairs`を共有するため同じファイルに置く。`compute_transform`は`align`のアラインメント〜Kabsch fitまでを再利用し、構造の書き出しだけをしない版。`apply_transform`はその結果の`rotation`/`translation`を任意の構造ファイルに適用するだけの薄い関数)
+- `src/chem/protein/pocket.py`: `find_pocket`・`list_pockets`・`residues_near`の実装(`residues_near`は`find_pocket`が使う`_load_external_ligand_coords`をリガンド座標読み込みに再利用する)
 - `src/chem/protein/splitting.py`: `split`の実装(ファイル名を`split.py`にしない理由は下記の注意点と同じ)
 
 **注意**: 実装ファイル名を公開関数名と同じにしない(例: `align.py`に`align`関数を置かない、`summary.py`に`summary`関数を置かない)。パッケージの`__init__.py`で`from .align import align`のように再エクスポートすると、`chem.protein`パッケージの`align`属性がサブモジュールからその関数へ上書きされてしまい、以降`import chem.protein.align`のようなドット区切りでのサブモジュールアクセスが(内部テストなどで)壊れる。既存の`chembl`/`rcsb`/`alphafold`サブパッケージが実装ファイルを常に`fetch.py`(公開関数名と別名)にしているのも同じ理由。
@@ -82,6 +82,39 @@ protein.align(structures, reference=None, chain=None, outdir="aligned")
 7. `Bio.PDB.Superimposer`でマッチしたCA原子ペアに対してKabsch法によるフィッティングを行い、得られた回転・並進を**構造の全原子**(タンパク質だけでなくリガンド・水も含む)に適用する。これにより、align出力後もリガンドの相対位置が保たれ、後続の`find_pocket`にそのまま使える。`results[path] = {"rmsd": round(float(sup.rms), 3), "identity": round(identity, 3)}`
 8. `Bio.PDB.PDBIO`で、referenceも含めて各構造を`outdir`に`{入力ファイルのstem}.pdb`として書き出す(**入力がCIFでも常にPDB形式で出力する** — fpocketがPDB形式を要求するための一貫性)。referenceの書き出しはメインループの前に1回だけ行い、`structures`側のループでは`path == ref_path`のときスキップする(referenceが`structures`に含まれない場合でも正しく書き出される)
 
+## chem.protein.compute_transform / chem.protein.apply_transform
+
+```python
+from chem import protein
+
+t = protein.compute_transform(mobile, reference, mobile_chain=None, reference_chain=None)
+protein.apply_transform(structure_path, t["rotation"], t["translation"], outpath)
+```
+
+`align`は複合体の**全チェーン**を1つの構造ファイルとしてまとめて重ね合わせるが、`chem.protein.split`が書き出したような「チェーンごとに1ファイル」のセットでは、キナーゼ本体はシーケンスアラインメントできても、結合パートナー(サイクリンなど)やリガンドSDFには比較対象となる配列そのものが無い。`compute_transform`はキナーゼ側1本のアラインメント〜Kabsch fitの結果(回転・並進)だけを取り出して返し、`apply_transform`(蛋白質PDB用)/`chem.ligand.apply_transform`(リガンドSDF用)でそのまま他ピースに使い回すことで、複合体全体を「あたかも一括でアラインしたかのように」共通座標系に再構成できるようにする。
+
+- `mobile`, `reference`: PDB/CIFファイルパス
+- `mobile_chain`, `reference_chain`: 使うチェーンIDを明示指定(省略時は`align`と同じ自動選択 — referenceはサイズ最大の主鎖、mobileはreferenceとの一致度が最も高いチェーン)
+- 戻り値: `{"rotation": 3x3のネストリスト, "translation": 3要素リスト, "rmsd": float, "identity": float}`。`Bio.PDB.Superimposer`/`Atom.transform`の規約(`new_coord = old_coord @ rotation + translation`、行ベクトル座標)そのまま。`rmsd`はシーケンスマッチしたCA原子上のÅ単位RMSD、`identity`は`align`と同じ定義。マッチ残基が`_MIN_MATCHED_RESIDUES`未満なら`ValueError`
+
+### アルゴリズム(`compute_transform`)
+
+1. `align`のステップ1〜7と全く同じロジック(`_load_structure`→チェーン選択→`_chain_seq_and_ca`→(`mobile_chain`指定時は`_matched_ca_pairs`を直接、省略時は`_best_matching_chain_alignment`)→`Bio.PDB.Superimposer.set_atoms`)を実行するが、**構造ファイルへの適用・書き出しは一切行わない**
+2. `sup.rotran`から得た`(rot, tran)`を`{"rotation": rot.tolist(), "translation": tran.tolist(), "rmsd": round(float(sup.rms), 3), "identity": round(identity, 3)}`として返す
+
+`apply_transform(structure_path, rotation, translation, outpath)`:
+
+- `structure_path`: 変換対象のPDB/CIFファイル(`compute_transform`の計算に使ったファイルそのものである必要はない — 例えば`chem.protein.split`が書き出した、キナーゼとは別チェーンのパートナー蛋白質PDB)
+- `rotation`, `translation`: `compute_transform`の戻り値の`"rotation"`/`"translation"`をそのまま渡す
+- `outpath`: 出力PDBファイルパス(親ディレクトリが無ければ作成)
+- 戻り値: `outpath`
+
+### アルゴリズム(`apply_transform`)
+
+1. `_load_structure(structure_path)`で読み込み、`rotation`/`translation`を`numpy`配列(`dtype="f"`)に変換
+2. 構造内の**全原子**(`structure.get_atoms()`)に対して`atom.transform(rot, tran)`(Biopythonの規約通り`new_coord = old_coord @ rotation + translation`)を適用する
+3. `Bio.PDB.PDBIO`で`outpath`に書き出す(**入力がCIFでも常にPDB形式で出力する** — `align`と同じ一貫性)
+
 ## chem.protein.identity_matrix
 
 ```python
@@ -151,6 +184,28 @@ AlphaFold予測構造のようにリガンドが一切結合していない構�
 2. `pockets/pocket{N}_atm.pdb`をすべて(`_pocket_atm_paths`でid→パスの辞書として)走査し、各ポケットについて`find_pocket`と共通の`_pocket_result(pocket_id, atm_path, info)`ヘルパーで結果辞書を組み立てる(`find_pocket`もこのヘルパーを使うようリファクタリングする)
 3. `druggability_thres`が`None`でなければ、`druggability_score`が`None`のポケット、および`druggability_thres`未満のポケットを除外する
 4. `druggability_score`降順(`druggability_thres=None`で`None`が残った場合は最後)でソートして返す
+
+## chem.protein.residues_near
+
+```python
+from chem import protein
+
+protein.residues_near(structure_path, ligands, radius=8.0)
+```
+
+`find_pocket`/`list_pockets`はfpocketの空洞検出に基づくが、`residues_near`はそれより軽量な、単純な距離ベースの活性部位残基抽出。リガンド自体が既に`structure_path`と同じ座標系の別ファイルとして存在するケース(典型的には`chem.protein.split`が書き出した蛋白質PDB+各リガンドSDF、必要なら`chem.protein.apply_transform`/`chem.ligand.apply_transform`で共通座標系に移した後)に向く。
+
+- `structure_path`: PDB/CIFファイル。水・リガンド・イオンなどのHETATM残基は(`radius`以内であっても)対象外 — 常にポリマー(ATOM)残基のみを返す
+- `ligands`: リガンドファイルパス1つ、またはそのリスト(`.pdb`/`.sdf`/`.mol`/`.mol2`、3D座標は`structure_path`と同じ座標系にあること)
+- `radius`: 距離閾値(Å、inclusive)。デフォルト`8.0`
+- 戻り値: `[{"chain", "resnum", "icode", "resname"}, ...]`(`icode`は挿入コードが無ければ`""`)、`(chain, resnum, icode)`順にソート済み — `find_pocket`の`"residues"`と同じ形
+
+### アルゴリズム
+
+1. `ligands`が単一パス(`str`/`os.PathLike`)なら1要素のリストにし、各パスを`find_pocket`と共通の`_load_external_ligand_coords`(RDKit、拡張子で`Chem.MolFromPDBFile`/`MolFromMolFile`/`MolFromMol2File`を使い分け)で読み込み、全リガンドの原子座標を`numpy.concatenate`で1つの配列にまとめる
+2. `structure_path`を`_load_structure`で読み込み、`residue.id[0] == " "`(標準残基のhetero flag)の原子だけを対象に`Bio.PDB.NeighborSearch`を構築する(対象原子が1つも無ければ空リストを返す)
+3. リガンド原子座標1つずつについて`ns.search(coord, radius)`で近傍原子を検索し、ヒットした原子の親残基を`{(chain_id, resnum, icode): residue}`の辞書に集める(重複は自動的に排除される)
+4. キーでソートし、`{"chain", "resnum", "icode", "resname"}`のリストに変換して返す
 
 ## chem.protein.split
 
@@ -250,6 +305,26 @@ identityのマトリクスを作りたい」という要望を受けて追加。
 (23) 28ファイル全ての`"protein"`パスと`{entry_id}_{chain_id}`ラベルを集め、
 `chem.protein.identity_matrix`を1回呼んで28×28の`numpy`配列に変換、(24) `matplotlib`の
 `imshow`でヒートマップとして可視化(カラーバー付き、軸ラベルに`{entry_id}_{chain_id}`)。
+
+同ノートブックは続けて`chem.protein.compute_transform`/`apply_transform`/`chem.ligand.apply_transform`/
+`chem.protein.residues_near`のデモを追加する: (25) 説明md(「片方のチェーンだけアラインし、
+同じ変換を他方に使い回す」旨。同一PDBエントリ内のチェーンは元々同じ結晶の非対称単位に
+収まっているため、キナーゼ側1本の変換をそのエントリの全チェーン・全リガンドSDFへそのまま
+適用してよい、という理屈も明記)、(26) 各エントリのキナーゼ(chain A)を基準構造`4BCF`へ
+`compute_transform`で変換計算(`4BCF`自身は単位回転・ゼロ並進を手動セット)、
+(27) 変換適用md、(28) 各エントリの全蛋白質チェーンと全リガンドSDFに、キナーゼ1本分の
+変換をそのまま`protein.apply_transform`/`ligand.apply_transform`で適用し`cdk9_cdk2_aligned/`
+に書き出し(非対称単位内2コピー目のチェーンC/Dも含め、個別にアラインし直さない点がポイント)、
+(29) 検算md、(30) 変換後のキナーゼchain Aを改めてreferenceに対し`compute_transform`し直し、
+回転行列がほぼ単位行列・並進がほぼゼロ・rmsdが元の値とほぼ一致することを確認、
+(31) 可視化md、(32) 9構造全ての全チェーン+主要阻害剤(`TPO`除く)を共通座標系に重ねてpy3Dmol
+表示(CDK9セットとCDK2セットで色分け)、(33) アクティブサイト判定md、(34) 同一chainに
+結合した`TPO`以外のリガンド候補のうち最大重原子数のものを本命とし、本命から半径8Å以内の
+候補だけを残す2段階アルゴリズム(`active_site_ligands`)で結晶化添加剤(`4BCK`の`SGM`など)
+を除外、(35) 可視化md、(36) キナーゼ(chain A)のみ+その活性部位リガンドのみを重ねて表示、
+(37) `chem.protein.residues_near`の説明md、(38)-(39) `residues_near`(半径8Å)でアクティブ
+サイト残基を抽出しラベル付け、`ipywidgets.SelectMultiple`で表示する構造(entry_id)を選べる
+インタラクティブなpy3Dmolビュー(選んだ構造すべてを同じ座標系に重ねて比較できる)。
 
 ## 注意
 

@@ -1,6 +1,6 @@
 # chem.ligand の再現プロンプト
 
-`chem`リポジトリの`chem`パッケージ内に、ダウンロード済み構造からリガンドを抽出して結合次数を修正し、薬らしさ(QED)を評価するためのサブパッケージ`ligand`(`chem.ligand`)を追加する指示。`chem.protein`の`SOLVENT_AND_IONS`を再利用する。
+`chem`リポジトリの`chem`パッケージ内に、ダウンロード済み構造からリガンドを抽出して結合次数を修正し、薬らしさ(QED)を評価し、`chem.protein.compute_transform`の変換をSDFの3D座標に適用する(`apply_transform`)ためのサブパッケージ`ligand`(`chem.ligand`)を追加する指示。`chem.protein`の`SOLVENT_AND_IONS`を再利用する。
 
 ## 背景
 
@@ -8,7 +8,7 @@
 
 ## 要件
 
-`src/chem/ligand/extract.py`に以下を実装し、`src/chem/ligand/__init__.py`で`from .extract import list_ligand_codes, list_ligand_instances, load_ligand, molecular_weight, qed`として再エクスポートする。以下の形で呼び出せること:
+`src/chem/ligand/extract.py`に以下を実装し、`src/chem/ligand/__init__.py`で`from .extract import apply_transform, list_ligand_codes, list_ligand_instances, load_ligand, molecular_weight, qed`として再エクスポートする。以下の形で呼び出せること:
 
 ```python
 from chem import ligand
@@ -49,10 +49,20 @@ ligand.qed(mol)                                             # 0.29
 
 - それぞれ`rdkit.Chem.QED.qed(mol)` / `rdkit.Chem.Descriptors.MolWt(mol)`への薄いラッパー
 
+### `apply_transform(sdf_path, rotation, translation, outpath)`
+
+`chem.protein.compute_transform`が返す回転・並進を、蛋白質構造ファイルではなくリガンドSDFの3D座標に適用するための対。`chem.protein.split`が書き出したリガンドSDFを、同じエントリの蛋白質チェーン(`chem.protein.apply_transform`で移動済み)と同じ座標系に移し、複合体を再構成する用途を想定する。
+
+- `sdf_path`: 変換対象のSDFファイル(例: `chem.protein.split`が書き出したリガンドパス)。`Chem.SDMolSupplier(sdf_path, sanitize=False)`で読み込む — `split`が`bond_orders_restored=False`で書き出したSDF(単結合のみの生の結合情報)は`sanitize=True`だと失敗しうるため
+- `rotation`, `translation`: `chem.protein.compute_transform`の戻り値の`"rotation"`/`"translation"`をそのまま渡す。`chem.protein.apply_transform`と同じ規約(`new_coord = old_coord @ rotation + translation`)なので、同じペアを蛋白質側とリガンド側の両方に使い回せば整合性が保たれる
+- `outpath`: 出力SDFファイルパス(親ディレクトリが無ければ作成)
+- 戻り値: `outpath`
+- 内部処理: `next(Chem.SDMolSupplier(sdf_path, sanitize=False))`で1分子読み込み、`mol.GetConformer().GetPositions()`で座標を取得し`new_coords = coords @ rotation + translation`(`numpy`)を計算、`conf.SetAtomPosition(i, ...)`で各原子に書き戻してから`Chem.SDWriter(outpath)`(親ディレクトリを`os.makedirs(..., exist_ok=True)`で作成した上で)で書き出す
+
 ## 前提環境
 
 - `~/chem`リポジトリ、`chem` conda-forge環境(Python 3.12)
-- 新規の外部依存追加は不要(既存の`rdkit`、`biopython`、`requests`のみ使用)
+- `apply_transform`の追加時点で`numpy`は`chem.protein`側の要件で既に依存関係に入っているため、`chem.ligand`単独としての新規外部依存追加は不要(`rdkit`、`biopython`、`requests`、`numpy`を使用)
 - `src/chem/ligand/`として`chem`パッケージのサブパッケージに配置(`pyproject.toml`の`[tool.setuptools.packages.find]`が`chem.ligand`を自動検出)
 
 ## サンプルノートブックの更新
