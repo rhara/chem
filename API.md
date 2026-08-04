@@ -188,6 +188,65 @@ address in the request's `User-Agent` header per [UniProt's own API usage
 guidelines](https://www.uniprot.org/help/api); pass your own if you're
 making many calls.
 
+### `protein.sequence_align(accession, structures, canonical_feature_type=None, canonical_feature_description=None, marker_feature_types=None, chain=None)`
+
+Align a set of PDB/CIF structures' observed sequences against a UniProt
+canonical sequence, one residue position at a time — e.g. to compare WT and
+mutant structures, or many ligand-bound states of the same receptor, on a
+shared, canonical-numbered coordinate system. Unlike `protein.align`, this
+doesn't superpose or write any structure files; it only produces aligned
+sequence data, leaving rendering (text blocks, colored HTML, mutation lists,
+...) to the caller.
+
+- `accession` — UniProt accession (e.g. `"P07550"`).
+- `structures` — list of PDB/CIF file paths (e.g. from
+  `chem.rcsb.download_structures`).
+- `canonical_feature_type` / `canonical_feature_description` — optional
+  UniProt feature to slice canonical down to, e.g. `("Chain", "Beta-lactamase
+  TEM")` to drop a cleaved signal peptide, or `("Domain", "Bromo 1")` for a
+  single domain of a larger protein. `canonical_feature_type=None` (default)
+  uses the full-length UniProt sequence as-is.
+- `marker_feature_types` — optional tuple of UniProt feature types to collect
+  as positions of interest, e.g. `("Active site",)` for an enzyme's catalytic
+  residues, `("Binding site",)` for a receptor's ligand pocket, `("Site",)`
+  for a non-catalytic functional residue. `None` (default) returns an empty
+  marker set.
+- `chain` — optional chain id to use in every structure, overriding
+  auto-selection. Default: whichever chain in each structure has the
+  highest-scoring global alignment to canonical — not simply "chain A", since
+  chain lettering isn't consistent across depositions, and a structure can
+  contain chains that aren't the target protein at all (a fusion partner
+  spliced into a loop, e.g. T4 lysozyme in many GPCR structures; a
+  stabilizing nanobody; other complex partners such as a heterotrimeric G
+  protein).
+
+For each structure, the selected chain's sequence is extracted from its ATOM
+records via ProDy — not SEQRES, so this is exactly what's resolved in the
+deposited coordinates, no more and no less — then globally aligned
+(`Bio.Align.PairwiseAligner`) onto canonical's own numbering. Ties between
+equally-optimal alignments (which can arise near a long unmodeled stretch
+when a residue at one end coincidentally matches canonical at the other end)
+are broken in favor of the alignment with the fewest separate matched blocks,
+so a real gap comes out as one contiguous gap rather than a coincidental
+cross-gap match plus a shorter gap elsewhere.
+
+Returns a dict:
+- `protein_name`, `organism` — from the UniProt entry.
+- `canonical_seq` — the (possibly feature-sliced) canonical sequence.
+- `feature_start`, `feature_end` — `canonical_seq`'s 1-based bounds within
+  the full UniProt sequence (`1`, `len(full_seq)` when
+  `canonical_feature_type` is `None`).
+- `marker_positions` — set of 1-based `canonical_seq` positions collected
+  from `marker_feature_types` (empty when `marker_feature_types` is `None`).
+- `raw_sequences` — `{path: sequence}`, the selected chain's CA-derived
+  sequence exactly as observed, before alignment.
+- `sequences` — `{path: sequence}`, each raw sequence collapsed onto
+  canonical's coordinates — for every `path`, `len(sequences[path]) ==
+  len(canonical_seq)`, with `-` marking any canonical position not observed
+  in that structure (missing density, or outside the modeled construct; a
+  residue belonging to a fusion partner or other foreign chain is dropped
+  entirely rather than shown, since it has no canonical position of its own).
+
 ### `protein.align(structures, reference=None, chain=None, outdir="aligned")`
 
 Sequence-align and structurally superpose a set of same-target structures

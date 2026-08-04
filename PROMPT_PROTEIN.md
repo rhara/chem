@@ -1,11 +1,12 @@
-# chem.protein.summary / chem.protein.get_fasta / chem.protein.align / chem.protein.compute_transform / chem.protein.apply_transform / chem.protein.identity_matrix / chem.protein.find_pocket / chem.protein.list_pockets / chem.protein.residues_near / chem.protein.split の再現プロンプト
+# chem.protein.summary / chem.protein.get_fasta / chem.protein.sequence_align / chem.protein.align / chem.protein.compute_transform / chem.protein.apply_transform / chem.protein.identity_matrix / chem.protein.find_pocket / chem.protein.list_pockets / chem.protein.residues_near / chem.protein.split の再現プロンプト
 
-`chem`リポジトリの`chem`パッケージ内に、構造解析用のサブパッケージ`protein`(`chem.protein`)を追加し、UniProtエントリのアノテーション取得(`summary`)とFASTA配列取得(`get_fasta`)、複数構造のシーケンス・3Dアラインメント(`align`)、そのアラインメントの回転・並進だけを取り出して他の構造ファイルに使い回す(`compute_transform`/`apply_transform`)、任意の構造集合の総当たり配列一致度マトリクス(`identity_matrix`)、リガンド近傍のfpocketポケット・構成残基特定(`find_pocket`)、リガンドを持たない構造向けの全候補ポケット列挙(`list_pockets`)、リガンドファイルからの単純な距離ベース活性部位残基抽出(`residues_near`)、構造ファイルをリガンドフリーの蛋白質PDBと各HETATM残基のSDFに分割する(`split`)を実装するための指示。`chem.rcsb`・`chem.alphafold`でダウンロードした構造をそのまま入力にできることを想定する。
+`chem`リポジトリの`chem`パッケージ内に、構造解析用のサブパッケージ`protein`(`chem.protein`)を追加し、UniProtエントリのアノテーション取得(`summary`)とFASTA配列取得(`get_fasta`)、複数のPDB/CIF構造の観測配列をUniProt canonical配列の座標系に1次元アラインメントする(`sequence_align`)、複数構造のシーケンス・3Dアラインメント(`align`)、そのアラインメントの回転・並進だけを取り出して他の構造ファイルに使い回す(`compute_transform`/`apply_transform`)、任意の構造集合の総当たり配列一致度マトリクス(`identity_matrix`)、リガンド近傍のfpocketポケット・構成残基特定(`find_pocket`)、リガンドを持たない構造向けの全候補ポケット列挙(`list_pockets`)、リガンドファイルからの単純な距離ベース活性部位残基抽出(`residues_near`)、構造ファイルをリガンドフリーの蛋白質PDBと各HETATM残基のSDFに分割する(`split`)を実装するための指示。`chem.rcsb`・`chem.alphafold`でダウンロードした構造をそのまま入力にできることを想定する。
 
 ## パッケージ構成
 
-- `src/chem/protein/__init__.py`: `from .annotation import get_fasta, summary` / `from .structural_align import align, apply_transform, compute_transform, identity_matrix` / `from .pocket import SOLVENT_AND_IONS, WATER, find_pocket, list_pockets, residues_near` / `from .splitting import split` として再エクスポート
+- `src/chem/protein/__init__.py`: `from .annotation import get_fasta, summary` / `from .sequence_align import sequence_align` / `from .structural_align import align, apply_transform, compute_transform, identity_matrix` / `from .pocket import SOLVENT_AND_IONS, WATER, find_pocket, list_pockets, residues_near` / `from .splitting import split` として再エクスポート
 - `src/chem/protein/annotation.py`: `summary`・`get_fasta`の実装
+- `src/chem/protein/sequence_align.py`: `sequence_align`の実装(UniProt REST APIへの`requests.get`、`Bio.Align.PairwiseAligner`によるcanonicalへの1次元アラインメント、ProDyによる構造からのCA配列抽出を1ファイルにまとめる。`structural_align.py`とは別ファイルにする — こちらはBio.PDBではなくProDyでCA配列を読み、3D重ね合わせは一切行わない全く別の処理系統のため)
 - `src/chem/protein/structural_align.py`: `align`・`compute_transform`・`apply_transform`・`identity_matrix`の実装(いずれも`_load_structure`/`_select_chain`/`_chain_seq_and_ca`/`_matched_ca_pairs`を共有するため同じファイルに置く。`compute_transform`は`align`のアラインメント〜Kabsch fitまでを再利用し、構造の書き出しだけをしない版。`apply_transform`はその結果の`rotation`/`translation`を任意の構造ファイルに適用するだけの薄い関数)
 - `src/chem/protein/pocket.py`: `find_pocket`・`list_pockets`・`residues_near`の実装(`residues_near`は`find_pocket`が使う`_load_external_ligand_coords`をリガンド座標読み込みに再利用する)
 - `src/chem/protein/splitting.py`: `split`の実装(ファイル名を`split.py`にしない理由は下記の注意点と同じ)
@@ -54,6 +55,50 @@ UniProtエントリの配列をFASTA文字列として取得する。`summary`�
 - `id`: `summary`と同じ3形式(UniProtアクセッション/エントリ名/ChEMBL target id)を受け付ける
 - `email`: 省略可能。UniProt REST APIは必須にしていないが、[UniProt自身のAPI利用ガイドライン](https://www.uniprot.org/help/api)がリクエストの`User-Agent`ヘッダーに連絡先メールアドレスを含めることを推奨しているため、`User-Agent: chem/{chem.__version__} ({email})`として送る。デフォルトは`"user@example.com"`のプレースホルダー
 - 戻り値: `https://rest.uniprot.org/uniprotkb/{accession}.fasta`のレスポンステキストそのまま(FASTA形式の文字列)
+
+## chem.protein.sequence_align
+
+```python
+from chem import protein
+
+result = protein.sequence_align(
+    accession,
+    structures,
+    canonical_feature_type=None,
+    canonical_feature_description=None,
+    marker_feature_types=None,
+    chain=None,
+)
+```
+
+`align`/`identity_matrix`は同じターゲットの構造同士を互いに比較する(reference構造、または構造集合内の他の構造)が、`sequence_align`はUniProtの**canonical配列**(WTの完全長配列、または特定のfeature範囲)を唯一の基準にして、複数構造の観測配列(構造中に実際に見えている残基そのもの)を全て同じ座標系に載せる。WT構造・変異体構造・電子密度が部分的にしか見えていない構造を横並びで比較したい用途に向く。3D重ね合わせ(Kabsch fit)や構造ファイルの書き出しは一切行わない — アラインメント済みのデータを返すだけで、そこからテキスト表示・色付きHTML・変異点一覧などを組み立てるのは呼び出し側の仕事とする(「データはライブラリ、表示はカスタムスクリプト」という設計方針。リポジトリ所有者からの明示的な指示: 「出力はカスタムなスクリプトで行うという設計にしたい」)。
+
+- `accession`: UniProtアクセッション(例: `"P07550"`)
+- `structures`: PDB/CIF構造ファイルパスのリスト(`chem.rcsb.download_structures`の出力をそのまま渡せる。`align`と同じく、IDではなくファイルパスを受け取る設計 — ダウンロードは`chem.rcsb`側の責務という既存方針を踏襲する)
+- `canonical_feature_type` / `canonical_feature_description`: canonical配列として切り出すUniProt featureを指定する。例: シグナルペプチドが切断される分泌蛋白なら`("Chain", "Beta-lactamase TEM")`のように成熟鎖のfeatureを指定してその範囲だけを使う、多ドメイン蛋白の1ドメインだけを見たいなら`("Domain", "Bromo 1")`のように指定する。`canonical_feature_type=None`(デフォルト)ならUniProtのfull-length配列をそのまま使う(`canonical_feature_description`だけを指定してもtypeがNoneなら無視される)
+- `marker_feature_types`: マーカーとして集めたいUniProt feature typeのタプル。酵素の触媒残基なら`("Active site",)`、受容体のリガンド結合ポケットなら`("Binding site",)`、非触媒だが機能的に重要な残基なら`("Site",)`など、対象蛋白の性質に応じて呼び出し側が選ぶ。`None`(デフォルト)なら空集合(マーカーなし)を返す — 全ての蛋白が触媒残基を持つわけではない(受容体やリーダードメインなど)ため、決め打ちの単一feature typeにしない
+- `chain`: 全構造で使うチェーンIDを明示指定(省略時は下記の自動選択)
+- 戻り値: 以下のキーを持つ`dict`
+  - `protein_name`, `organism`: UniProtエントリから
+  - `canonical_seq`: (featureで切り出した場合はその範囲の)canonical配列
+  - `feature_start`, `feature_end`: `canonical_seq`のUniProt全長配列内での1-based範囲(`canonical_feature_type=None`なら`(1, len(full_seq))`)
+  - `marker_positions`: `marker_feature_types`から集めた、`canonical_seq`内(1-based)の位置集合。`marker_feature_types=None`なら空集合
+  - `raw_sequences`: `{path: 配列}`。各構造で選ばれたチェーンのCA由来配列を、アラインメント前のそのまま
+  - `sequences`: `{path: 配列}`。`raw_sequences`の各配列をcanonicalの座標に収めたもの — 全ての`path`について`len(sequences[path]) == len(canonical_seq)`が成り立ち、その構造でcanonicalのその位置が観測されていなければ`-`になる
+
+### アルゴリズム
+
+1. `requests.get(f"{UNIPROT_API}/{accession}.json")`でUniProtエントリを取得する(`chem.ids`のようなID解決は行わない — `accession`は既にUniProtアクセッションであることを前提とする)
+2. `canonical_feature_type`が`None`なら`full_seq`全体、そうでなければ`entry["features"]`から`type == canonical_feature_type`かつ(`canonical_feature_description`が指定されていれば)`description == canonical_feature_description`に一致する最初のfeatureの`location.start/end`で`full_seq`をスライスし、`canonical_seq`・`feature_start`・`feature_end`とする
+3. `marker_feature_types`が`None`または空なら`marker_positions = set()`。そうでなければ`entry["features"]`から`type in marker_feature_types`かつ`feature_start <= location.start.value <= feature_end`のfeatureを集め、各`location.start.value - feature_start + 1`(canonical内1-based相対位置)の集合を返す
+4. `Bio.Align.PairwiseAligner`を1つ構築する(`mode="global"`、`open_gap_score=-10`、`extend_gap_score=-0.5`、`match_score=2`、`mismatch_score=-3`)。**`mismatch_score`の値は慎重に選ぶ必要がある**:
+   - `-1`(Biopythonのデフォルトに近い、ごく僅かなペナルティ)だと、T4リゾチームのような長い(~160残基)融合パートナーがcanonical上のある範囲(例: 細胞内ループ3、~30残基)を置き換えている場合、正しく1つの連続したギャップにならず、接合部で数残基が「たまたま似ている」候補にミスマッチとして吸収され、本来ならギャップになるべき位置に偽の変異が大量に出現する(実データ: β2アドレナリン受容体の複数のT4L融合構造で確認・修正した不具合)
+   - 対策として`mismatch_score`を`open_gap_score`と同値(`-10`)まで引き上げると、この融合部分のスミアリングは解消するが、**別の、より深刻な不具合が生じる**: 既に開いている(隣接する)ギャップのすぐ隣に本物の点変異がある場合、そのギャップを1残基分延長するコストは`extend_gap_score`(`-0.5`)しかかからないため、`mismatch_score`をそこまで引き上げると本物の変異(例: `S262D`、`C265F`)がミスマッチとして報告される代わりにギャップへ静かに吸収されて消えてしまう(実データのβ2AR比較で発見。`open_gap_score`と同値にした結果、複数構造で既知の変異点が消失することを確認して`-3`に差し戻した)
+   - `-3`は、実際に扱う規模(数十残基以上の融合ブロック)でのスミアリング防止と、ギャップ隣接の点変異を保持することの両立点として選んだ値。原理的な限界として、canonicalで置き換えられる範囲が非常に短い(4残基程度以下)場合はなお僅かにスミアリングし得るが、実際に検証した構造(TEM-1 β-ラクタマーゼ、BRD4、β2ARのT4リゾチーム/ナノボディ/Gタンパク質融合)では十分機能する
+5. 各`structures`について、ProDy(`prody.parsePDB`、拡張子が`.cif`/`.mmcif`なら`prody.parseMMCIF`)で読み込み、`prody.HierView`で全ポリマー鎖の`chain.select("protein and name CA")`から1文字配列を集める(`_load_ca_sequences`)。これはATOMレコードに実際に座標を持つ残基のみで、SEQRES(構築物全体の設計配列)は一切見ない — 「生のPDBファイルで実際に見えている残基」をそのまま反映する
+6. チェーン選択: `chain`引数が指定されていればそのチェーンID(無ければ`ValueError`)。指定が無ければ、その構造の全チェーンそれぞれについて`aligner.align(canonical_seq, seq).score`を計算し、最もスコアの高いチェーンを採用する(`_best_matching_chain_sequence`)。**単純な「chain A」固定ではない** — GPCR構造は同じchain IDでも構造ごとにT4リゾチーム融合・ナノボディ・ヘテロ三量体Gタンパク質サブユニットなど、標的蛋白以外のポリマー鎖が混ざっており、これらを取り違えないための自動選択が必須になる
+7. 選ばれた生配列を`canonical_seq`にアラインメントし、canonical座標に収める(`_align_to_canonical`)。`aligner.align(canonical_seq, query_seq)`は同点最適解を複数返し得るため(下記参照)、`itertools.islice`で最大`_MAX_TIED_ALIGNMENTS=500`個まで列挙し、その中から`len(alignment.aligned[0])`(マッチしたブロック数)が最小のものを選ぶ。選んだアラインメントの`gapped_canonical`/`gapped_query`から、`gapped_canonical`が`-`でない列だけを残して(`gapped_query`側の対応する文字、`-`ならそのまま)連結したものを返す — これにより長さが必ず`len(canonical_seq)`と一致し、query側がcanonicalに無い挿入(融合パートナーなど)を持っていた場合はその分の文字がそのまま失われる(canonical上に対応する位置が無いため)
+8. **同点タイブレークの理由**: canonicalの構築物に含まれない長い未observed区間(例: β2ARのC末端側~70残基の細胞内ドメイン、常にどの結晶構造でも解けない)の直前で、query配列の最後の残基がcanonicalのその区間より**後**にある残基と偶然同じアミノ酸だった場合(例: 両方とも`L`)、「区間の直前で正しく終わる」アラインメントと「区間の直後まで飛んで(間に大きなギャップを開けて)そこにマッチさせる」アラインメントが完全に同スコアになり得る。Biopythonはこの場合どちらを返すか保証しない。実データ(2RH1)で、本来canonical位置342で終わるはずの観測配列が、たまたま同じ`L`である位置413(配列の本当の末尾)に誤ってマッチしていたことを、PDBファイル自身の残基番号(`resnum`が29から342まで連続していることを直接確認)で検証し発見した。マッチブロック数最小のタイブレークはこれを正しい側(canonicalの342で終わる、1つの連続したギャップ)に解決する。ただし**それでも解決しない残るケース**がある: canonical自身が同一アミノ酸の繰り返しで終わる(または始まる)場合(例: `...NDSLL`の`L,L`)、query側の対応する残基数がその繰り返しの長さより短ければ、「末尾1文字だけ一致」と「末尾2文字とも一致」が完全に同スコア・同ブロック数になり得、これは配列だけからは原理的に決定不能(6MXTで確認)。実害は末端の`del`範囲が±1残基ずれる程度に限られる
 
 ## chem.protein.align
 
@@ -256,12 +301,19 @@ HOH, WAT, DOD
 ## 前提環境
 
 - `~/chem`リポジトリ、`chem` conda-forge環境(Python 3.12)
-- 新規依存: `biopython`(PyPI版あり、`pyproject.toml`の`dependencies`に追加)、`numpy`(同様)、`fpocket`(PyPIなし、`environment.yml`のconda-forge依存に追加。`mamba install -n chem -c conda-forge fpocket`または`mamba env update -f environment.yml`でインストール)
+- 新規依存: `biopython`(PyPI版あり、`pyproject.toml`の`dependencies`に追加)、`numpy`(同様)、`prody`(同様。`sequence_align`がCA配列抽出に使う。以前から`chem`環境には入っていたが`pyproject.toml`/`environment.yml`のどちらにも未宣言だったため、これを機に`dependencies`へ追加した)、`fpocket`(PyPIなし、`environment.yml`のconda-forge依存に追加。`mamba install -n chem -c conda-forge fpocket`または`mamba env update -f environment.yml`でインストール)
 - `gemmi`は既存環境に(他パッケージ経由で)入っているが、今回は使わずBio.PDBのみで実装する
+- `pandas`は`notebook`extrasに既に含まれる(identityマトリクスの表表示に使う)
 
 ## サンプルノートブック
 
 `notebooks/cdk20_similar_targets.ipynb`の「CDK20's own UniProt annotation」セクションのコードセルは、`chem.protein.summary("Q8IZL9")`(または`"CDK20_HUMAN"`)を呼び、戻り値の`dict`を`pandas.DataFrame(list(props.items()), columns=["Property", "Value"])`で表(`.style.hide(axis="index")`、`Value`列は`white-space: pre-wrap`で長文を折り返し)として表示するだけにする。同ノートブックのBLASTPセクション直前、配列を取得するセルは`requests.get(".../Q8IZL9.fasta")`の代わりに`chem.protein.get_fasta("Q8IZL9")`を使う(`email`はデフォルト値のまま渡さない — `chem.blast.blastp`側の`email`引数にもデフォルト値が実装されたため、以前ノートブック内に直接記述していた`EBI_EMAIL`変数はリポジトリ所有者の指示で削除した)。
+
+`notebooks/sequence_alignment.ipynb`(新規)は、特定の1蛋白専用ではなく`sequence_align`を汎用的に使うためのテンプレートノートブックとして作る。全セルはStep 1の設定セル(`UNIPROT_ACCESSION`・`CANONICAL_FEATURE_TYPE`/`CANONICAL_FEATURE_DESCRIPTION`・`MARKER_FEATURE_TYPES`・`PDB_IDS`・`DATA_DIR`)を書き換えるだけで別の蛋白・別の構造セットに差し替えられるようにする(当初はHIV-1プロテアーゼ(`P03366`のGag-Polポリプロテインから`Chain`feature`"Protease"`で切り出し)、続けてTEM-1 β-ラクタマーゼ(`P62593`、`Chain`feature`"Beta-lactamase TEM"`でシグナルペプチドを除く)、BRD4のBromo1ドメイン(`O60885`、`Domain`feature`"Bromo 1"`)と対象を差し替えながら育てたが、いずれも構造が良く折り畳まれており電子密度の欠損(ギャップ)がほとんど出ない題材だったため、リポジトリ所有者の判断で最終的にβ2アドレナリン受容体(`ADRB2_HUMAN`、`P07550`、`CANONICAL_FEATURE_TYPE=None`でfull-length使用、`MARKER_FEATURE_TYPES=("Binding site",)`でオルソステリックポケット残基をマーカーに)に差し替えた — T4リゾチーム融合・ナノボディ・ヘテロ三量体Gタンパク質複合体など構築物の多様性が高く、チェーン自動選択やギャップ処理を実地で検証できる題材のため)。最終的なPDB_IDSは18構造、インバースアゴニスト(`2RH1`のcarazolol等)・中性アンタゴニスト(`3NYA`のalprenolol)・共有結合性アゴニスト(`3PDS`)・フル/部分アゴニスト(`4LDO`のアドレナリン、`7DHI`のsalbutamol等)・正/負のアロステリックモジュレーター(`6N48`/`6OBA`)・細胞内アロステリック部位アンタゴニスト(`5X7D`)・Gs蛋白複合体(`3SN6`、`7DHR`等cryo-EM)を薬理学的に幅広くカバーする。
+
+セル構成: (1) タイトル+概要md(「アラインメント自体は`sequence_align`に任せ、このノートブックは表示に専念する」設計方針を明記)、(2) Step 1設定md+コード、(3) Step 2 PDBダウンロードmd+コード(`chem.rcsb.download_structures(PDB_IDS, outdir=DATA_DIR, filetype="pdb")`後、`structure_paths = [os.path.join(DATA_DIR, f"{pdb_id}.pdb") for pdb_id in PDB_IDS]`でパスリストを作る)、(4) Step 3 `sequence_align()`呼び出しmd+コード: `result = chem.protein.sequence_align(...)`を実行し、`result["sequences"]`をファイルパスからPDB ID(`os.path.splitext(os.path.basename(p))[0]`)にre-keyした`observed`辞書を作り、蛋白名・organism・マーカー位置・canonical配列を`print`した後、`sequences_by_label = {"Canonical": canonical_seq, **observed}`として**canonicalも含めた**全蛋白の総当たりペアワイズidentityマトリクス(gap位置は分母分子どちらからも除外、`chem.protein.structural_align.identity_matrix`と同じ定義)を`pandas.DataFrame`で作り、対角(自明な自己一致1.0)は`np.nan`にして`na_rep="-"`で`"-"`表示、非対角でidentity`1.0`(=完全に同一の構築物系統)のセルだけ`.style.map(...)`で黄色背景にする(`identity_matrix.to_numpy(dtype=float, copy=True)`を使う点に注意 — pandasのcopy-on-write下では`.values`への直接書き込みが読み取り専用エラーになるため、素の`.copy()`では不十分)、(5) Step 4 色付きHTML表示md+コード: `render_alignment_html(observed, canonical_seq, marker_pos, width=100, reference=None)`。60→100文字幅への変更、ブロック先頭に10残基おきの位置ルーラー(`_ruler_lines`ヘルパー、右詰め数字行+`|`行)、相違点は赤太字、canonicalに無い挿入(gapped_canonicalの`-`列)は落として詰めるためHTML上には出ない、canonical側に無い(未observed)位置は灰色イタリック、マーカー位置は太字+下線(`<b><u>`)。`reference`引数で基準をcanonical以外の構造(例: `2RH1`)に切り替えられ、その場合基準構造自身が観測していない位置は比較不能として赤字にせずそのまま表示する、(6) Step 5 2RH1(最初の高分解能構造)を基準にした表示md+`render_alignment_html(observed, canonical_seq, marker_pos, reference="2RH1")`のコール。
+
+このノートブック用のアラインメントロジック(タイブレーク、`mismatch_score=-3`)は`sequence_align`本体に実装されているため、ノートブック側は`render_alignment_html`・`pairwise_identity`など表示専用のヘルパーのみを持つ。実行して確認できた具体的な生物学的シグナル: `N187E`(N-グリコシル化部位除去、結晶化構築物の定番)が18構造全てに共通、`M96T`/`M98T`が新しめの構築物系統(cryo-EM Gs複合体含む)にのみ共通、`H93C`が共有結合性アゴニスト構造`3PDS`だけに出現(タイトル通りアゴニストをシステインに共有結合させるための変異と整合)、`6KR8`(フルアゴニスト結合状態)は`A59C`/`T136C`/`N148C`等の新規Cys導入と`C77V`/`C265A`/`C327S`等の天然Cys除去を組み合わせた「システイン再設計」構築物であることが変異点から読み取れる。identityマトリクスでは`3NY8`/`3NYA`/`6PS3`/`6PS5`同士、`7DHR`/`7BZ2`/`7DHI`同士、`5JQH`/`4LDO`/`6N48`同士がそれぞれペアワイズ`1.000`(完全一致)になり、構築物の世代・系統がそのまま可視化される。
 
 `notebooks/alphafold_pocket_thrb_human.ipynb`のRCSBダウンロードセルの直後に、ダウンロードした複数のトロンビン構造をAlphaFold予測構造を参照にアラインする独立セクション(タイトルmd + コード。コードは`align()`実行と`align_df`(rmsd/identity列)の表示のみ)を置く。重ね書きpy3Dmolビューア(トグルボタンで表示構造を選ぶウィジェット)はさらに別の独立セクション(独自のH2タイトルmd + コード)として、アラインメントセクションの直後に続ける -- 1セルに両方を詰め込まない。fpocketのサンプルは別途、リガンド入り構造(例: トリプシン+ベンザミジン `3PTB`)で`find_pocket`を実行し、選ばれたポケットの残基をハイライト表示するセルを追加する。`list_pockets`のサンプルは、AlphaFold予測構造セクション(リガンドが存在しない)に以下3セルを追加する: (1) `pandas.DataFrame`で「pocket_id / score / druggability_score / volume / n_residues」の表として全候補ポケットを表示、(2) `druggability_score >= 0.2`の候補ポケットを、半透明cartoonの上にポケットごとに異なる色の構成残基stickでハイライトして可視化(色とpocket_id/druggability_scoreの凡例付き)、(3) 同じ候補ポケットを、構成残基のstickの代わりに`spheres`フィールド(fpocketのアルファ球)を`py3Dmol.addSphere`で球ごとに描画し、空洞を充填された体積として可視化(こちらもポケットごとに色分け・凡例付き)。既存セルは書き換えず、新規セルとして追記する。
 
@@ -329,6 +381,7 @@ identityのマトリクスを作りたい」という要望を受けて追加。
 ## 注意
 
 - このリポジトリはdd_*プロジェクト群、`~/lab/chembl`、`dd_chembl`とは無関係な独立プロジェクト。それらのコードやロジックを参照・流用しない
+- テストは`tests/test_protein_sequence_align.py`に、ネットワーク不要な範囲で追加する: `_marker_positions`が`marker_feature_types=None`/空タプルで空集合を返すこと・指定typeでfeature位置をcanonical相対座標に正しく変換すること、`_fetch_canonical`(`requests.get`を`monkeypatch`)がfeature指定時にスライスすること・`canonical_feature_type=None`でfull-lengthをそのまま使うこと、`_align_to_canonical`が長い異種挿入(融合パートナー相当)を1つの連続したギャップに畳み込むこと(canonicalの置換対象範囲が十分長い場合)・同点最適解群からマッチブロック数最小のものを選ぶこと(canonical末尾が繰り返し残基のケース)、置換対象範囲が短い(2残基)場合はなおスミアリングし得るという既知の限界そのものを固定するテスト、`_load_ca_sequences`が全チェーンのCA配列を返すこと、`_best_matching_chain_sequence`が(`chain=None`なら)最もアラインメントスコアの高いチェーンを選ぶこと・`chain`明示指定時はそれを尊重すること、`sequence_align`をエンドツーエンドで(`requests.get`を`monkeypatch`、合成PDBテキストを`tmp_path`に書き出して)実行し、`protein_name`/`organism`/`canonical_seq`/`feature_start`/`feature_end`/`marker_positions`/`raw_sequences`/`sequences`が期待通りの内容になること(1残基欠損・1残基点変異を含む合成構造で確認)。実データでの動作確認は`notebooks/sequence_alignment.ipynb`のβ2アドレナリン受容体18構造で行い、`chem.protein.__init__`が`from .sequence_align import sequence_align`で`sequence_align`という関数名をサブモジュール名と同名で再エクスポートしているため(既存の「実装ファイル名を公開関数名と同じにしない」原則の裏返しの注意点として)、`import chem.protein.sequence_align as x`のような`from ... import ... as`形式でサブモジュール自体にアクセスしようとすると`x`は関数オブジェクトになってしまう(`chem.protein`パッケージの`sequence_align`属性が関数で上書きされているため)。テストでモジュール内のプライベートヘルパー(`_fetch_canonical`等)に直接アクセスする場合は`importlib.import_module("chem.protein.sequence_align")`を使うこと
 - テストは`tests/test_protein_split.py`に、`split`のロジック(合成PDBテキストに対する、
   デフォルト(`all_chains=False`)でのチェーンごとの蛋白質PDB書き出し・ファイル名への
   チェーンID埋め込みと水以外のHETATM残基除去、`outdir`未存在時の自動作成、

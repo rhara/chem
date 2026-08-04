@@ -4,11 +4,11 @@ version = "0.1.0"
 description = "Chemistry utilities for interactive use in Jupyter notebooks"
 requires-python = ">=3.12"
 readme = "README.md"
-# rdkit, py3dmol, tqdm, biopython, numpy have official PyPI wheels, so they're safe
-# to list here. ambertools, nglview, and fpocket are installed via environment.yml
-# (conda-forge) instead: ambertools and fpocket have no PyPI package at all, and
-# nglview's JupyterLab widget assets are more reliably wired up through the
-# conda-forge build.
+# rdkit, py3dmol, tqdm, biopython, numpy, prody have official PyPI wheels, so
+# they're safe to list here. ambertools, nglview, and fpocket are installed via
+# environment.yml (conda-forge) instead: ambertools and fpocket have no PyPI
+# package at all, and nglview's JupyterLab widget assets are more reliably
+# wired up through the conda-forge build.
 dependencies = [
     "rdkit",
     "py3dmol",
@@ -17,6 +17,7 @@ dependencies = [
     "chembl_structure_pipeline",
     "biopython",
     "numpy",
+    "prody",
 ]
 
 [project.optional-dependencies]
